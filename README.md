@@ -2,11 +2,11 @@
 
 A two-player stick-figure slap game that wrecks the page it is installed on.
 
-Hold a button to charge a slap. The longer you hold, the harder it lands. Hit hard enough and the loser leaves the ring, flies across your page, and breaks whatever he lands on: text scatters, sections tilt, the header falls apart, and a full charge punches a hole straight through the site.
+Hold a button to charge a slap. The longer you hold, the harder it lands. Hit hard enough and the loser leaves the ring, flies across your page, and breaks whatever he lands on: text scatters, sections tilt, the header falls apart, and a near-full charge punches a hole straight through the site. Fill the meter completely and you arm a bomb that blows a whole section apart.
 
 One file. No dependencies. No build step. One button puts everything back.
 
-![A full-power slap sends a stick figure through the page](demo.gif)
+![A full charge arms a bomb that blows a section of the page apart](demo.gif)
 
 **[Play the live demo](https://mupran.github.io/site-slap/)**
 
@@ -15,14 +15,14 @@ One file. No dependencies. No build step. One button puts everything back.
 Paste this before the closing `</body>` tag. A "Slap this site" button appears in the corner of the page.
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.0.0/site-slap.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.1.0/site-slap.js"></script>
 ```
 
 To place the ring inside your page instead, point it at an element:
 
 ```html
 <div id="ring"></div>
-<script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.0.0/site-slap.js"
+<script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.1.0/site-slap.js"
         data-target="#ring"></script>
 ```
 
@@ -47,11 +47,12 @@ SiteSlap.mount({ target: document.querySelector('#ring') });
 | Hold for about | What happens |
 | --- | --- |
 | under 1 second | A pat |
-| 1 to 1.5 seconds | Into the ropes |
-| 1.5 to 2 seconds | Out of the ring, into a nearby section |
-| 2 to 3 seconds | Across the page, with the page scrolling to follow |
-| 3 to 3.3 seconds | Into the header: it tilts and its links fall off |
-| a full charge | Through the website |
+| 1 to 1.7 seconds | Into the ropes |
+| 1.7 to 2.3 seconds | Out of the ring, into a nearby section |
+| 2.3 to 2.9 seconds | Across the page, with the page scrolling to follow |
+| 2.9 to 3.4 seconds | Into the header: it tilts and its links fall off |
+| 3.4 to 4.1 seconds | Through the website: a hole punched in the page |
+| a completely full meter | A bomb. A whole section is blown apart |
 
 ## Options
 
@@ -99,4 +100,4 @@ game.destroy();  // remove the game entirely
 
 ## Licence
 
-MIT. Made by [Emmanuel M Shine](https://www.mupranthetechguy.com).
+MIT. Made by [Emmanuel M Shine](https://www.mupranthetechguy.com). My idea, but Claude helped me build it.

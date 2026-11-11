@@ -1,4 +1,4 @@
-/*! site-slap v1.0.0 | MIT License | https://github.com/Mupran/site-slap */
+/*! site-slap v1.1.0 | MIT License | https://github.com/Mupran/site-slap */
 // A two-player stick-figure slap game that wrecks the page it is installed on.
 // One file, no dependencies. Drop it in with a <script> tag.
 (function (global) {
@@ -17,8 +17,9 @@
   const INK = '#121311', PAPER = '#ecebe4', ROPE = '#77786f';
   const W = 960, H = 540, FLOOR = 440, HOME = [380, 580];
   // Power thresholds: pat, ropes, out of the ring, across the page, the header, through the site.
-  const T = [0.22, 0.45, 0.62, 0.78, 0.92];
-  const TIERS = ['a pat', 'the ropes', 'out of the ring', 'across the page', 'into the header', 'through the website'];
+  const T = [0.2, 0.4, 0.55, 0.7, 0.82];
+  const BOMB = 0.985; // the meter held completely full
+  const TIERS = ['a pat', 'the ropes', 'out of the ring', 'across the page', 'into the header', 'through the website', 'a bomb'];
   const TOP = 2147483000;
   const NS = 'http://www.w3.org/2000/svg';
   const rand = (a, b) => a + Math.random() * (b - a);
@@ -27,7 +28,7 @@
   const easeIn = (t) => t * t * t;
   const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
   const back = (t) => 1 + 2.7 * Math.pow(t - 1, 3) + 1.7 * Math.pow(t - 1, 2);
-  const tierOf = (p) => { const n = T.findIndex((t) => p < t); return n < 0 ? 5 : n; };
+  const tierOf = (p) => { if (p >= BOMB) return 6; const n = T.findIndex((t) => p < t); return n < 0 ? 5 : n; };
 
   const CSS = `
     :host { all: initial; }
@@ -50,6 +51,14 @@
     .slap span { position: relative; z-index: 1; color: #fff; mix-blend-mode: difference; }
     .slap:disabled { cursor: default; opacity: .45; } .slap.turn:disabled { opacity: .8; }
     .slap.max { animation: jit 90ms linear infinite; }
+    .slap.armed::before { background: #ff3b30; animation: armed 240ms linear infinite alternate; }
+    @keyframes armed { from { filter: brightness(1); } to { filter: brightness(1.5); } }
+    .narrow { display: none; }
+    @media (max-width: 560px) {
+      .wide { display: none; } .narrow { display: inline; }
+      .row { gap: 8px; } .slap { flex: 1 1 0; min-width: 0; height: 56px; padding: 0 8px; font-size: 14px; }
+      .slap::after { display: none; } .opt { padding: 8px 13px; font-size: 13px; } .status { font-size: 15px; min-height: 3em; }
+    }
     @keyframes jit { 0% { translate: -2px 1px; } 50% { translate: 2px -1px; } 100% { translate: -1px -2px; } }
     .opt { padding: 9px 15px; border: 1px solid #34352f; border-radius: 999px; font-size: 14px; font-weight: 600; }
     .opt:hover { background: ${PAPER}; color: ${INK}; } .opt:disabled { opacity: .5; cursor: default; }
@@ -85,7 +94,7 @@
             <button type="button" class="opt repair" hidden>Repair the website</button>
             <button type="button" class="opt quit">${inline ? 'Stop playing' : 'Close'}</button>
           </div>
-          <p class="hint">Take turns holding your button, or use the A and L keys. The longer you hold, the further they go. <a href="https://github.com/Mupran/site-slap" target="_blank" rel="noopener">site-slap</a></p>
+          <p class="hint"><span class="wide">Take turns holding your button, or use the A and L keys. The longer you hold, the further they go. Fill the meter completely to arm a bomb. </span><span class="narrow">Take turns. Hold longer to hit harder. A full meter arms a bomb. </span><a href="https://github.com/Mupran/site-slap" target="_blank" rel="noopener">site-slap</a></p>
         </div>
       </div>
       <button type="button" class="fix ${opts.position === 'left' ? 'left' : 'right'}" hidden>Repair the website</button>`;
@@ -98,7 +107,8 @@
 
     const mk = (i) => ({ i, x: HOME[i], y: FLOOR, dir: i ? -1 : 1, color: COLORS[i], lean: 0, head: 0, arm: 0.3, elbow: 0.4, rot: 0, sy: 1, ko: 0, mark: 0, out: false, phase: rand(0, 6), shake: 0 });
     const men = [mk(0), mk(1)];
-    const cam = { z: 1, x: W / 2, y: H / 2, shake: 0 };
+    const cam = { z: 1, x: W / 2, y: H / 2, shake: 0, rot: 0 };
+    let rings = [], bursts = [], flash = 0;
     const rope = { left: 0, right: 0 };
     let parts = [], words = [];
     let state = 'off', turn = 0, cpu = !!opts.computer, lastTier = -1, damaged = false;
@@ -141,8 +151,20 @@
         g.stroke();
         g.beginPath(); g.arc(j.hd[0], j.hd[1], 22, 0, 7); g.stroke();
         g.beginPath(); g.arc(j.hand[0], j.hand[1], 6, 0, 7); g.fill();
+        if (f.bomb && !outlineOnly) {
+          const bx = j.hand[0] + 6, by = j.hand[1] - 12;
+          g.save();
+          g.fillStyle = '#0b0c0a'; g.strokeStyle = PAPER; g.lineWidth = 3;
+          g.beginPath(); g.arc(bx, by, 15, 0, 7); g.fill(); g.stroke();
+          g.beginPath(); g.moveTo(bx + 8, by - 13); g.quadraticCurveTo(bx + 18, by - 26, bx + 12, by - 32); g.stroke();
+          g.fillStyle = Math.floor(performance.now() / 70) % 2 ? '#ffd84a' : '#ff7a45';
+          g.beginPath(); g.arc(bx + 12, by - 33, 5 + Math.random() * 3, 0, 7); g.fill();
+          g.restore();
+        }
       };
+      let outlineOnly = true;
       if (outline) { g.strokeStyle = INK; g.fillStyle = INK; g.lineWidth = 13; body(); }
+      outlineOnly = false;
       g.strokeStyle = f.color; g.fillStyle = f.color; g.lineWidth = 7; body();
       g.save();
       g.translate(j.hd[0], j.hd[1]); g.rotate(j.L + f.head); g.lineWidth = 3;
@@ -152,6 +174,16 @@
       } else {
         g.beginPath(); g.arc(9, -4, 2.4, 0, 7); g.fill();
         g.beginPath(); g.moveTo(5, 8); g.lineTo(14, 7); g.stroke();
+      }
+      if (f.dizzy > 0) {
+        g.fillStyle = '#ffd84a';
+        for (let n = 0; n < 3; n++) {
+          const a = performance.now() / 160 + n * 2.09, sx = Math.cos(a) * 30, sy2 = -34 + Math.sin(a) * 7;
+          g.beginPath();
+          for (let k = 0; k < 8; k++) { const r = k % 2 ? 2.4 : 6.5, t = k * Math.PI / 4; g.lineTo(sx + Math.cos(t) * r, sy2 + Math.sin(t) * r); }
+          g.fill();
+        }
+        g.fillStyle = f.color;
       }
       if (f.mark > 0.02) {
         g.globalAlpha = Math.min(1, f.mark); g.strokeStyle = COLORS[1 - f.i]; g.lineWidth = 3.5;
@@ -184,10 +216,17 @@
       ctx.clearRect(0, 0, W, H);
       ctx.save();
       const sx = cam.shake ? rand(-cam.shake, cam.shake) : 0, sy = cam.shake ? rand(-cam.shake, cam.shake) : 0;
-      ctx.translate(W / 2 + sx, H / 2 + sy); ctx.scale(cam.z, cam.z); ctx.translate(-cam.x, -cam.y);
+      ctx.translate(W / 2 + sx, H / 2 + sy); ctx.rotate(cam.rot); ctx.scale(cam.z, cam.z); ctx.translate(-cam.x, -cam.y);
       drawRing();
       men.forEach((f) => { if (!f.out) drawMan(ctx, f); });
       parts.forEach((p) => { ctx.globalAlpha = Math.max(0, p.life); ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill(); });
+      ctx.globalAlpha = 1;
+      rings.forEach((r) => { ctx.globalAlpha = Math.max(0, r.life); ctx.strokeStyle = r.color; ctx.lineWidth = 2 + 10 * r.life; ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, 7); ctx.stroke(); });
+      bursts.forEach((b) => {
+        ctx.globalAlpha = Math.max(0, b.life); ctx.strokeStyle = b.color; ctx.lineWidth = 5; ctx.lineCap = 'round';
+        const r0 = 34 + (1 - b.life) * 70, r1 = r0 + 26 + 60 * b.life;
+        ctx.beginPath(); ctx.moveTo(b.x + Math.cos(b.a) * r0, b.y + Math.sin(b.a) * r0); ctx.lineTo(b.x + Math.cos(b.a) * r1, b.y + Math.sin(b.a) * r1); ctx.stroke();
+      });
       ctx.globalAlpha = 1;
       words.forEach((w) => {
         ctx.save();
@@ -199,6 +238,7 @@
         ctx.restore();
       });
       ctx.restore();
+      if (flash > 0.01) { ctx.globalAlpha = Math.min(1, flash); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
     }
     const pose = (f, p) => { f.arm = 0.3 - 2.5 * p; f.elbow = 0.4 + 0.6 * p; f.lean = -0.28 * p; f.shake = p > 0.6 ? (p - 0.6) * 0.09 : 0; };
     function frame(now) {
@@ -213,7 +253,10 @@
         if (p >= 1) { tweens.delete(t); t.res(); }
       });
       if (state === 'charging') {
-        power = Math.min(1, (performance.now() - holdStart) / 3600);
+        power = Math.min(1, (performance.now() - holdStart) / 4200);
+        men[turn].bomb = power >= BOMB;
+        btns[turn].classList.toggle('armed', power >= BOMB);
+        if (power >= BOMB) labels[turn].textContent = 'Bomb armed. Release!';
         pose(men[turn], power);
         btns[turn].style.setProperty('--p', power);
         btns[turn].classList.toggle('max', power >= T[3]);
@@ -222,6 +265,12 @@
       }
       parts.forEach((p) => { p.vy += 900 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt * 1.1; });
       parts = parts.filter((p) => p.life > 0);
+      rings.forEach((r) => { r.r += r.v * dtReal; r.life -= dtReal * 1.6; });
+      rings = rings.filter((r) => r.life > 0);
+      bursts.forEach((b) => { b.life -= dtReal * 2.2; });
+      bursts = bursts.filter((b) => b.life > 0);
+      flash *= Math.pow(0.0008, dtReal);
+      men.forEach((f) => { if (f.dizzy > 0) f.dizzy -= dtReal; });
       words.forEach((w) => { w.life -= dtReal * 0.55; w.s += (1 - w.s) * 0.2; });
       words = words.filter((w) => w.life > 0);
       men.forEach((f) => { f.mark = Math.max(0, f.mark - dtReal * 0.05); });
@@ -233,19 +282,32 @@
     /* ---------- one slap ---------- */
     async function slap(A, V, p) {
       A.shake = 0;
-      await tween(A, { arm: -2.4 - 0.4 * p, lean: -0.2 - 0.2 * p, elbow: 1 }, 0.14);
+      if (p >= T[2] && !reduce) {
+        // A hop and a full spin to load the swing.
+        tween(A, { y: FLOOR - 54 }, 0.16, easeOut).then(() => tween(A, { y: FLOOR }, 0.2, easeIn));
+        await tween(A, { rot: A.dir * Math.PI * 2, arm: -2.4 - 0.4 * p, lean: -0.2 - 0.2 * p, elbow: 1 }, 0.34, easeInOut);
+        A.rot = 0;
+      } else {
+        await tween(A, { arm: -2.4 - 0.4 * p, lean: -0.2 - 0.2 * p, elbow: 1 }, 0.14);
+      }
+      for (let n = 0; n < 6 + 10 * p; n++) parts.push({ x: A.x + A.dir * rand(-10, 40), y: FLOOR - rand(90, 200), vx: A.dir * rand(300, 900), vy: rand(-40, 40), r: rand(1, 2.5), life: rand(0.15, 0.35), color: PAPER });
       await tween(A, { arm: 1.72, elbow: 0.05, lean: 0.34 + 0.2 * p, x: A.x + A.dir * 82 }, 0.1, easeIn);
       const hx = V.x + V.dir * 4, hy = FLOOR - 185;
-      V.mark = 1; V.ko = 1;
+      V.mark = 1; V.ko = 1; A.bomb = false;
       cam.shake = 6 + 16 * p;
+      flash = 0.25 + 0.6 * p;
+      rings.push({ x: hx, y: hy, r: 16, v: 380 + 500 * p, life: 1, color: PAPER }, { x: hx, y: hy, r: 6, v: 220 + 300 * p, life: 1, color: A.color });
+      for (let n = 0; n < 7 + Math.round(7 * p); n++) bursts.push({ x: hx, y: hy, a: (n / (7 + Math.round(7 * p))) * Math.PI * 2 + rand(-0.15, 0.15), life: 1, color: n % 2 ? PAPER : A.color });
+      tween(rope, { left: 14 * p, right: 14 * p }, 0.05).then(() => { tween(rope, { left: 0, right: 0 }, 0.6, back); });
+      if (!reduce && p >= T[0]) { timeScale = 0; await sleep(0.06 + 0.07 * p, true); } // hit-stop
       words.push({ text: p < T[0] ? 'pat.' : p < T[1] ? 'SLAP' : p < T[4] ? pick(['WHAM', 'THWACK', 'KAPOW']) : 'OBLITERATED', x: hx, y: hy - 58, rot: rand(-0.2, 0.1), s: 0.3, life: 1, color: A.color });
       for (let n = 0; n < 10 + 26 * p; n++) parts.push({ x: hx, y: hy, vx: -V.dir * rand(60, 520) * (0.4 + p), vy: rand(-420, 120), r: rand(1.5, 4), life: rand(0.5, 1.1), color: n % 3 ? PAPER : A.color });
-      if (!reduce) { timeScale = 0.07; tween(cam, { z: 1.45 + 0.55 * p, x: hx, y: hy + 20 }, 0.22, easeOut, true); }
+      if (!reduce) { timeScale = 0.07; tween(cam, { z: 1.45 + 0.55 * p, x: hx, y: hy + 20, rot: -V.dir * 0.07 * p }, 0.22, easeOut, true); }
       tween(V, { head: -(0.5 + 1.1 * p), lean: -(0.2 + 0.45 * p) }, 0.07);
       tween(A, { arm: 2.4, lean: 0.5 + 0.1 * p }, 0.08);
       await sleep(reduce ? 0.25 : 0.7 + 0.6 * p, true);
       timeScale = 1;
-      tween(cam, { z: 1, x: W / 2, y: H / 2 }, 0.4, easeInOut, true);
+      tween(cam, { z: 1, x: W / 2, y: H / 2, rot: 0 }, 0.4, easeInOut, true);
       const recover = tween(A, { x: HOME[A.i], arm: 0.3, elbow: 0.4, lean: 0 }, 0.35, easeInOut);
       if (p < T[0]) {
         say(pick(['Barely a tickle.', 'That was a greeting, not a slap.', 'Worse things have happened in a breeze.']));
@@ -256,7 +318,8 @@
         say(pick(['That will leave a mark.', 'Into the ropes.', 'Felt that one.']));
         const side = V.i ? 'right' : 'left';
         tween(rope, { [side]: 60 }, 0.3);
-        await tween(V, { x: V.i ? 800 : 160, lean: -0.5, head: -0.6 }, 0.3);
+        await tween(V, { x: V.i ? 800 : 160, lean: -0.5, head: -0.6, rot: -V.dir * Math.PI * 2 }, 0.34);
+        V.rot = 0; V.dizzy = 1.6;
         tween(rope, { [side]: 0 }, 0.5, back);
         await tween(V, { x: HOME[V.i], lean: 0.2, head: 0.3 }, 0.42, easeOut);
         await tween(V, { lean: 0, head: 0 }, 0.3);
@@ -286,6 +349,15 @@
       const ring = cv.getBoundingClientRect(), ringY = ring.top + scrollY + ring.height / 2;
       const list = blocks().map((el) => { const r = el.getBoundingClientRect(); return { el, d: Math.abs(r.top + scrollY + r.height / 2 - ringY) }; }).sort((a, b) => a.d - b.d);
       const anywhere = { el: null, x: innerWidth * rand(0.3, 0.7), y: Math.max(60, scrollY - innerHeight * rand(0.2, 0.8)) };
+      if (p >= BOMB) {
+        // The bomb takes out a whole block: the biggest few candidates, picked at random.
+        const big = list.map((b) => b.el).sort((a, b) => b.getBoundingClientRect().height - a.getBoundingClientRect().height).slice(0, 4);
+        if (big.length) {
+          const el = pick(big), r = el.getBoundingClientRect();
+          return { el, bomb: true, x: r.left + scrollX + r.width * rand(0.4, 0.6), y: r.top + scrollY + Math.min(r.height * 0.45, innerHeight * 0.6), line: pick(['Section removed.', 'That section is closed for repairs.', 'It was like that when I got here.']) };
+        }
+        return { ...anywhere, el: document.body, bomb: true, line: 'Section removed.' };
+      }
       if (p >= T[4]) {
         const doc = document.documentElement.scrollHeight;
         let y = doc > innerHeight * 1.5 ? doc * rand(0.3, 0.6) : scrollY + innerHeight * 0.35;
@@ -324,7 +396,8 @@
       const r = cv.getBoundingClientRect(), k = r.width / W;
       const start = { x: r.left + scrollX + V.x * k, y: r.top + scrollY + (V.y - 95) * k };
       const tg = target(V, p);
-      const flyer = { ...V, x: 0, y: 95, lean: -0.4, head: -0.7, arm: -2.6, elbow: 0.2, rot: 0, ko: 1, mark: 1 };
+      const flyer = { ...V, x: 0, y: 95, lean: -0.4, head: -0.7, arm: -2.6, elbow: 0.2, rot: 0, ko: 1, mark: 1, bomb: !!tg.bomb, dizzy: 0 };
+      let blast = 0, blastAt = null;
       const size = Math.max(0.62, k * 1.05);
       let zoom = 1, eyes = false, growing = false, debris = [], caption = null;
       V.out = true;
@@ -345,6 +418,17 @@
         debris.forEach((d) => { octx.globalAlpha = Math.max(0, d.life); octx.fillStyle = d.color; octx.save(); octx.translate(d.x - scrollX, d.y - scrollY); octx.rotate(d.rot); octx.fillRect(-d.r, -d.r, d.r * 2, d.r * 1.4); octx.restore(); });
         octx.globalAlpha = 1;
         if (zoom > 0.02) { octx.save(); octx.translate(x - scrollX, y - scrollY); drawMan(octx, flyer, size * zoom, true); octx.restore(); }
+        if (blast) {
+          const u = (performance.now() - blast) / 1000, bx = blastAt.x - scrollX, by = blastAt.y - scrollY, big = Math.max(innerWidth, innerHeight);
+          if (u < 1.1) {
+            const a = Math.max(0, 1 - u / 1.1);
+            [['#ff7a45', 0.75], ['#ffd84a', 0.5], [PAPER, 0.26]].forEach(([c, k]) => { octx.globalAlpha = a; octx.fillStyle = c; octx.beginPath(); octx.arc(bx, by, (60 + easeOut(Math.min(1, u / 0.7)) * big * 0.55) * k, 0, 7); octx.fill(); });
+            octx.globalAlpha = a; octx.strokeStyle = PAPER; octx.lineWidth = 10 * a + 2;
+            octx.beginPath(); octx.arc(bx, by, 40 + u * big * 1.1, 0, 7); octx.stroke();
+            octx.globalAlpha = Math.max(0, 0.95 - u * 4); octx.fillStyle = '#fff'; octx.fillRect(0, 0, innerWidth, innerHeight);
+            octx.globalAlpha = 1;
+          }
+        }
         if (eyes && Math.floor(performance.now() / 160) % 9) { octx.fillStyle = PAPER; [-9, 9].forEach((dx) => { octx.beginPath(); octx.arc(x - scrollX + dx, y - scrollY, 3.2, 0, 7); octx.fill(); }); }
         if (caption) {
           const px = Math.min(40, innerWidth * 0.06);
@@ -382,6 +466,15 @@
 
       const dist = Math.hypot(tg.x - start.x, tg.y - start.y);
       const hit = await leg(start, tg, tg.edge ? 420 : Math.min(2300, Math.max(1100, dist * 0.9)), V.i ? 2.5 : -2.5, tg.edge ? 30 : 240);
+      if (tg.bomb) {
+        // He lands, the fuse runs down, then the section goes.
+        flyer.rot = (V.i ? 1 : -1) * Math.PI / 2; flyer.lean = 0; flyer.head = 0.3;
+        caption = { text: 'tick. tick. tick.', x: hit.x, y: hit.y };
+        await hold(1000, () => paint(hit.x, hit.y + 20 * size, null));
+        caption = null; flyer.bomb = false; flyer.color = '#4a4b45';
+        blastAt = hit; blast = performance.now();
+        for (let n = 0; n < 150; n++) debris.push({ x: hit.x + rand(-60, 60), y: hit.y + rand(-40, 40), vx: rand(-1100, 1100), vy: rand(-1500, -100), r: rand(4, 20), rot: rand(0, 6), life: rand(1.2, 2.4), color: pick([PAPER, '#ff7a45', '#ffd84a', '#3a3b36', V.color]) });
+      }
       smash(tg, hit.x, hit.y, p);
       if (tg.hole) {
         await hold(480, (u) => { zoom = 1 - 0.95 * easeIn(Math.min(1, u)); flyer.rot += 0.4; paint(hit.x, hit.y, null); });
@@ -390,11 +483,12 @@
       for (let n = 0; n < 34; n++) debris.push({ x: hit.x, y: hit.y, vx: rand(-420, 420), vy: rand(-620, -80), r: rand(3, 9), rot: rand(0, 6), life: rand(0.7, 1.3), color: n % 4 ? PAPER : V.color });
       caption = { text: tg.line, x: hit.x, y: hit.y };
       flyer.rot = (V.i ? 1 : -1) * Math.PI / 2; flyer.lean = 0; flyer.arm = 2.6; flyer.head = 0.3;
-      await hold(tg.hole ? 2100 : 1500, (u, dt) => {
+      flyer.dizzy = 9;
+      await hold(tg.bomb ? 2600 : tg.hole ? 2100 : 1500, (u, dt) => {
         debris.forEach((d) => { d.vy += 1500 * dt; d.x += d.vx * dt; d.y += d.vy * dt; d.rot += dt * 6; d.life -= dt * 0.8; });
         paint(hit.x + (tg.edge ? 26 : 0), hit.y + (tg.hole ? 0 : 20 * size), null);
       });
-      caption = null; debris = []; eyes = false; growing = !!tg.hole;
+      caption = null; debris = []; eyes = false; growing = !!tg.hole; blast = 0; flyer.dizzy = 0; flyer.color = V.color;
       flyer.lean = 0.2; flyer.arm = 0.6; flyer.head = 0; flyer.ko = 0;
       say(`${NAMES[V.i]} is on the way back.`);
       if (inline) host.scrollIntoView({ block: 'center' });
@@ -405,7 +499,7 @@
       growing = false; zoom = 1;
       octx.clearRect(0, 0, innerWidth, innerHeight);
       html.style.scrollBehavior = prevScroll;
-      Object.assign(V, { out: false, x: HOME[V.i], rot: 0, lean: 0, head: 0, ko: 0, sy: 0.62 });
+      Object.assign(V, { out: false, x: HOME[V.i], rot: 0, lean: 0, head: 0, ko: 0, sy: 0.62, dizzy: 1.8 });
       cam.shake = 8;
       await tween(V, { sy: 1 }, 0.5, back);
     }
@@ -418,6 +512,7 @@
       damaged = true; fixBtn.hidden = false; pill.hidden = false;
       crack(px, py, p, tg.edge);
       if (tg.hole) hole(px, py);
+      if (tg.bomb) { hole(px, py, true); blastSection(tg.el, px, py); return; }
       if (!reduce) document.body.animate(Array.from({ length: 7 }, (_, n) => ({ transform: n === 6 ? 'none' : `translate(${rand(-14, 14) * p}px, ${rand(-10, 10) * p}px)` })), { duration: 460, easing: 'ease-out' });
       if (tg.edge) return;
       if (tg.header && tg.el) {
@@ -491,15 +586,42 @@
       }
       document.body.appendChild(svg);
     }
-    function hole(px, py) {
-      const s = Math.min(380, innerWidth * 0.72), svg = svgAt(px, py, s, TOP + 1, 'filter:drop-shadow(0 8px 14px rgba(0,0,0,.5))');
+    // The bomb: everything in the block is thrown outward from the blast, in a wave.
+    function blastSection(el, px, py) {
+      if (!reduce) document.body.animate(Array.from({ length: 12 }, (_, n) => ({ transform: n === 11 ? 'none' : `translate(${rand(-34, 34)}px, ${rand(-26, 26)}px) rotate(${rand(-0.6, 0.6)}deg)` })), { duration: 900, easing: 'ease-out' });
+      const area = innerWidth * innerHeight * 0.6;
+      let count = 0;
+      el.querySelectorAll(SCATTER).forEach((n) => {
+        if (count > 420 || saved.has(n) || ours(n) || (n.parentElement && n.parentElement.closest(SCATTER))) return;
+        const r = n.getBoundingClientRect();
+        if (!r.width || !r.height || r.width * r.height > area) return;
+        const cx = r.left + scrollX + r.width / 2, cy = r.top + scrollY + r.height / 2;
+        const d = Math.hypot(cx - px, cy - py), ang = Math.atan2(cy - py, cx - px) + rand(-0.3, 0.3), push = rand(260, 900);
+        count++;
+        touch(n);
+        if (getComputedStyle(n).display === 'inline') n.style.display = 'inline-block';
+        const wait = Math.min(600, d * 0.35), dur = rand(900, 1500);
+        n.style.transition = `transform ${dur}ms cubic-bezier(.16,.7,.35,1) ${wait}ms, opacity 500ms ease ${wait + dur * 0.55}ms`;
+        n.style.transform = `translate(${(Math.cos(ang) * push).toFixed(0)}px, ${(Math.sin(ang) * push + rand(120, 620)).toFixed(0)}px) rotate(${rand(-260, 260).toFixed(0)}deg)`;
+        if (Math.random() < 0.72) n.style.opacity = '0';
+      });
+      if (el !== document.body && !saved.has(el) && el.getBoundingClientRect().height < innerHeight * 3) {
+        const r = el.getBoundingClientRect();
+        touch(el);
+        el.style.transition = 'transform 1100ms cubic-bezier(.3,1.5,.5,1)';
+        el.style.transformOrigin = `${(px - r.left - scrollX).toFixed(0)}px 50%`;
+        el.style.transform = `rotate(${pick([-1, 1]) * 2.4}deg) translateY(34px)`;
+      }
+    }
+    function hole(px, py, crater) {
+      const s = crater ? Math.min(620, innerWidth * 0.9) : Math.min(380, innerWidth * 0.72), svg = svgAt(px, py, s, TOP + 1, 'filter:drop-shadow(0 8px 14px rgba(0,0,0,.5))');
       const pts = Array.from({ length: 20 }, (_, n) => { const a = (n / 20) * Math.PI * 2, r = s * rand(0.29, 0.42); return [Math.cos(a) * r, Math.sin(a) * r]; });
       const poly = (k, fill) => { const el = document.createElementNS(NS, 'polygon'); el.setAttribute('points', pts.map(([x, y]) => `${(x * k).toFixed(1)},${(y * k + (k > 1 ? 5 : 0)).toFixed(1)}`).join(' ')); el.setAttribute('fill', fill); svg.appendChild(el); };
       poly(1.13, '#2c2d29'); poly(1, '#040504');
       const t = document.createElementNS(NS, 'text');
       t.setAttribute('text-anchor', 'middle'); t.setAttribute('y', (s * 0.16).toFixed(0));
       t.style.cssText = 'font:500 11px ui-monospace,Menlo,monospace;fill:#77786f';
-      t.textContent = 'nothing back here';
+      t.textContent = crater ? 'section not found' : 'nothing back here';
       svg.appendChild(t);
       document.body.appendChild(svg);
       if (!reduce) svg.animate([{ transform: 'scale(.5)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 240, easing: 'ease-out' });
@@ -530,7 +652,7 @@
     const prompt = () => say(`${cpu ? (turn ? 'Computer’s' : 'Your') : NAMES[turn] + '’s'} turn. Hold to charge, release to slap.${damaged ? ' The page has seen better days.' : ''}`);
     async function act(i, p) {
       state = 'busy'; refresh();
-      btns[i].classList.remove('max');
+      btns[i].classList.remove('max', 'armed');
       const name = TIERS[tierOf(p)];
       say(`${name[0].toUpperCase()}${name.slice(1)} it is.`);
       await slap(men[i], men[1 - i], p);
@@ -540,14 +662,15 @@
       if (cpu && turn === 1) {
         refresh();
         say(pick(['Computer’s turn. Brace.', 'The computer looks annoyed.', 'Here it comes.']));
-        const cp = Math.random() < 0.4 ? rand(T[1], 1) : rand(0.1, T[1]);
+        const roll = Math.random();
+          const cp = roll < 0.08 ? 1 : roll < 0.45 ? rand(T[1], BOMB - 0.01) : rand(0.1, T[1]);
         const holdP = { p: 0 };
         const charge = tween(holdP, { p: cp }, 0.5 + cp * 1.6, (t) => t, true);
-        const tick = () => { pose(men[1], holdP.p); btns[1].style.setProperty('--p', holdP.p); if (holdP.p < cp) requestAnimationFrame(tick); };
+        const tick = () => { pose(men[1], holdP.p); men[1].bomb = holdP.p >= BOMB; btns[1].classList.toggle('armed', holdP.p >= BOMB); btns[1].style.setProperty('--p', holdP.p); if (holdP.p < cp) requestAnimationFrame(tick); };
         tick();
         await charge;
         await slap(men[1], men[0], cp);
-        btns[1].style.setProperty('--p', 0);
+        btns[1].style.setProperty('--p', 0); btns[1].classList.remove('armed');
         turn = 0;
       }
       state = 'ready'; refresh(); prompt();
@@ -608,7 +731,7 @@
 
   let game = null;
   const API = {
-    version: '1.0.0',
+    version: '1.1.0',
     /** Mount the game. Pass { target: element } to place it inline; otherwise it adds a floating launcher. */
     mount(options) { if (game) game.destroy(); game = create(options || {}); return game; },
     open(options) { if (!game) game = create(options || {}); game.open(); return game; },
