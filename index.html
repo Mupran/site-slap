@@ -20,6 +20,7 @@
   .hero { padding: clamp(64px, 10vw, 130px) 0 clamp(40px, 6vw, 80px); }
   h1 { margin: 0; font-size: clamp(2.6rem, 8vw, 5.4rem); line-height: 0.98; letter-spacing: -0.04em; font-weight: 800; max-width: 12ch; text-wrap: balance; }
   .lede { margin: 26px 0 0; max-width: 56ch; font-size: clamp(1.08rem, 1.5vw, 1.25rem); color: var(--muted); }
+  .note { margin: 18px 0 0; max-width: 56ch; font-size: 1.02rem; font-weight: 600; }
   .cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
   .btn { display: inline-flex; align-items: center; gap: 10px; padding: 14px 24px; border-radius: 999px; border: 1px solid var(--fg); font-weight: 700; text-decoration: none; font-size: 1rem; background: none; color: inherit; cursor: pointer; font-family: inherit; }
   .btn.solid { background: var(--fg); color: var(--bg); }
@@ -62,6 +63,7 @@
     <div class="wrap">
       <h1>A slap game that wrecks your website.</h1>
       <p class="lede">Two stick figures, one ring, one script tag. Hold to charge a slap. Hit hard enough and the loser leaves the ring, lands somewhere on your page, and breaks it. This page is the demo, so everything on it is fair game.</p>
+      <p class="note">I built this with Claude. It is open source under the MIT licence, so anyone can add it to their own website and wreck it.</p>
       <div class="cta">
         <a class="btn solid" href="#play">Play on this page</a>
         <a class="btn" href="https://github.com/Mupran/site-slap">View on GitHub</a>
@@ -128,7 +130,7 @@
 </main>
 
 <footer>
-  <div class="wrap">Made by <a href="https://www.mupranthetechguy.com">Emmanuel M Shine</a>. MIT licensed. No websites were permanently harmed.</div>
+  <div class="wrap">Made by <a href="https://www.mupranthetechguy.com">Emmanuel M Shine</a>, built with Claude. Open source and MIT licensed: <a href="https://github.com/Mupran/site-slap">add it to your own site</a>. No websites were permanently harmed.</div>
 </footer>
 
 <script src="site-slap.js" data-target="#ring"></script>
