@@ -1,0 +1,12 @@
+{
+  "name": "site-slap",
+  "version": "1.0.0",
+  "description": "A two-player stick-figure slap game that wrecks the page it is installed on. One file, no dependencies.",
+  "main": "site-slap.js",
+  "files": ["site-slap.js"],
+  "keywords": ["game", "easter-egg", "canvas", "browser", "fun"],
+  "author": "Emmanuel M Shine (https://www.mupranthetechguy.com)",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/Mupran/site-slap.git" },
+  "homepage": "https://mupran.github.io/site-slap/"
+}

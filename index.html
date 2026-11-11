@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>site-slap · a slap game that wrecks the page it runs on</title>
+<meta name="description" content="A two-player stick-figure slap game you can add to any website with one script tag. Hit hard enough and the loser lands on your page and breaks it.">
+<style>
+  :root { --bg: #ecebe4; --fg: #121311; --muted: #54574f; --line: #cdcabf; --green: #0d9a58; --orange: #d9480f; }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.55 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: inherit; text-underline-offset: 0.2em; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 clamp(20px, 5vw, 56px); }
+  header { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); }
+  header .wrap { display: flex; justify-content: space-between; align-items: center; height: 62px; }
+  header strong { font-size: 1.05rem; letter-spacing: -0.01em; }
+  header nav { display: flex; gap: clamp(14px, 3vw, 30px); font-size: 0.95rem; }
+  header nav a { text-decoration: none; }
+  .hero { padding: clamp(64px, 10vw, 130px) 0 clamp(40px, 6vw, 80px); }
+  h1 { margin: 0; font-size: clamp(2.6rem, 8vw, 5.4rem); line-height: 0.98; letter-spacing: -0.04em; font-weight: 800; max-width: 12ch; text-wrap: balance; }
+  .lede { margin: 26px 0 0; max-width: 56ch; font-size: clamp(1.08rem, 1.5vw, 1.25rem); color: var(--muted); }
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
+  .btn { display: inline-flex; align-items: center; gap: 10px; padding: 14px 24px; border-radius: 999px; border: 1px solid var(--fg); font-weight: 700; text-decoration: none; font-size: 1rem; background: none; color: inherit; cursor: pointer; font-family: inherit; }
+  .btn.solid { background: var(--fg); color: var(--bg); }
+  section { padding: clamp(56px, 8vw, 110px) 0; border-top: 1px solid var(--line); }
+  h2 { margin: 0 0 22px; font-size: clamp(1.8rem, 4vw, 2.8rem); letter-spacing: -0.03em; line-height: 1.05; }
+  .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(20px, 3vw, 44px); }
+  .grid h3 { margin: 0 0 8px; font-size: 1.15rem; }
+  .grid p { margin: 0; color: var(--muted); }
+  .grid > div { padding-top: 18px; border-top: 1px solid var(--fg); }
+  pre { margin: 0; padding: 20px 22px; background: var(--fg); color: #ecebe4; border-radius: 14px; overflow-x: auto; font: 500 0.9rem/1.6 ui-monospace, 'SF Mono', Menlo, monospace; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.97rem; }
+  th, td { text-align: left; padding: 12px 14px 12px 0; border-top: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; width: 13em; }
+  code { font: 500 0.9em ui-monospace, 'SF Mono', Menlo, monospace; background: rgb(18 19 17 / 0.08); padding: 0.1em 0.35em; border-radius: 4px; }
+  pre code { background: none; padding: 0; }
+  ol.steps { margin: 0; padding: 0; list-style: none; counter-reset: s; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 clamp(20px, 3vw, 44px); }
+  ol.steps li { counter-increment: s; padding: 16px 0 24px; border-top: 1px solid var(--fg); color: var(--muted); }
+  ol.steps li::before { content: counter(s); display: block; font: 500 0.75rem ui-monospace, Menlo, monospace; margin-bottom: 8px; }
+  ol.steps li strong { display: block; color: var(--fg); font-size: 1.1rem; margin-bottom: 4px; }
+  #ring { margin-top: 8px; }
+  footer { padding: 44px 0 120px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.92rem; }
+  @media (max-width: 760px) { .grid, ol.steps { grid-template-columns: 1fr; } th { width: 8em; } header nav a:nth-child(2) { display: none; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <strong>site-slap</strong>
+    <nav>
+      <a href="#play">Play</a>
+      <a href="#how">How it works</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/Mupran/site-slap">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="hero">
+    <div class="wrap">
+      <h1>A slap game that wrecks your website.</h1>
+      <p class="lede">Two stick figures, one ring, one script tag. Hold to charge a slap. Hit hard enough and the loser leaves the ring, lands somewhere on your page, and breaks it. This page is the demo, so everything on it is fair game.</p>
+      <div class="cta">
+        <a class="btn solid" href="#play">Play on this page</a>
+        <a class="btn" href="https://github.com/Mupran/site-slap">View on GitHub</a>
+      </div>
+    </div>
+  </div>
+
+  <section id="play">
+    <div class="wrap">
+      <h2>Go on. Break something.</h2>
+      <div id="ring"></div>
+    </div>
+  </section>
+
+  <section id="how">
+    <div class="wrap">
+      <h2>The longer you hold, the further they go</h2>
+      <ol class="steps">
+        <li><strong>A pat</strong>A quick tap. Mostly an insult.</li>
+        <li><strong>The ropes</strong>They stagger back and the ropes fling them home.</li>
+        <li><strong>Out of the ring</strong>They land in a nearby section and scatter what is there.</li>
+        <li><strong>Across the page</strong>A long flight to somewhere far away, with the page scrolling to follow.</li>
+        <li><strong>Into the header</strong>The navigation tilts and its links fall off.</li>
+        <li><strong>Through the website</strong>A full charge punches a hole straight through the page.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>What you get</h2>
+      <div class="grid">
+        <div><h3>One file</h3><p>No dependencies and no build step. It draws on canvas and keeps its interface in a shadow root, so your styles and its styles stay apart.</p></div>
+        <div><h3>Real damage, fully reversible</h3><p>It moves your actual elements with CSS transforms. One button puts every one of them back exactly as it was.</p></div>
+        <div><h3>Two players or one</h3><p>Share a screen and take turns, on buttons or the A and L keys. Or switch to play the computer.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="wrap">
+      <h2>Install</h2>
+      <p style="margin:0 0 18px;max-width:60ch;color:var(--muted)">Paste this before the closing <code>&lt;/body&gt;</code> tag. A “Slap this site” button appears in the corner.</p>
+      <pre><code>&lt;script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.0.0/site-slap.js"&gt;&lt;/script&gt;</code></pre>
+      <p style="margin:28px 0 18px;max-width:60ch;color:var(--muted)">To place the ring inside your page, as it is above, point it at an element.</p>
+      <pre><code>&lt;div id="ring"&gt;&lt;/div&gt;
+&lt;script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.0.0/site-slap.js"
+        data-target="#ring"&gt;&lt;/script&gt;</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>Options</h2>
+      <table>
+        <tr><th><code>data-target</code></th><td>CSS selector of an element to hold the ring. Without it, a floating launcher is added.</td></tr>
+        <tr><th><code>data-computer</code></th><td>Start against the computer instead of a second player.</td></tr>
+        <tr><th><code>data-position</code></th><td><code>left</code> or <code>right</code>, the corner for the floating launcher.</td></tr>
+        <tr><th><code>data-label</code></th><td>Text for the floating launcher button.</td></tr>
+        <tr><th><code>data-manual</code></th><td>Load without setting anything up, then call <code>SiteSlap.mount()</code> yourself.</td></tr>
+      </table>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">Made by <a href="https://www.mupranthetechguy.com">Emmanuel M Shine</a>. MIT licensed. No websites were permanently harmed.</div>
+</footer>
+
+<script src="site-slap.js" data-target="#ring"></script>
+</body>
+</html>
