@@ -1,4 +1,4 @@
-/*! site-slap v1.1.0 | MIT License | https://github.com/Mupran/site-slap */
+/*! site-slap v1.2.0 | MIT License | https://github.com/Mupran/site-slap */
 // A two-player stick-figure slap game that wrecks the page it is installed on.
 // One file, no dependencies. Drop it in with a <script> tag.
 (function (global) {
@@ -376,6 +376,12 @@
         const far = list.slice(Math.floor(list.length / 2));
         return far.length ? { ...pointIn(pick(far).el), line: pick(['Mind the content.', 'That section had a family.']) } : { ...anywhere, line: 'Off the page.' };
       }
+      // Out of the ring: sometimes it is a long drop to the footer.
+      if (Math.random() < 0.4) {
+        const foot = [...document.querySelectorAll('footer, [role="contentinfo"]')].find((e) => !ours(e) && e.getBoundingClientRect().width > 100)
+          || list.map((b) => b.el).sort((a, b) => b.getBoundingClientRect().top - a.getBoundingClientRect().top)[0];
+        if (foot) { const r = foot.getBoundingClientRect(); return { el: foot, x: r.left + scrollX + r.width * rand(0.25, 0.75), y: r.top + scrollY + Math.min(r.height * 0.5, 200), line: pick(['All the way down to the footer.', 'He found the bottom of the page.']) }; }
+      }
       if (V.i === 1) {
         const near = list.slice(0, 3);
         return near.length ? { ...pointIn(pick(near).el), line: pick(['Sorry about that section.', 'It was a nice paragraph.']) } : { ...anywhere, line: 'Off the page.' };
@@ -512,7 +518,7 @@
       damaged = true; fixBtn.hidden = false; pill.hidden = false;
       crack(px, py, p, tg.edge);
       if (tg.hole) hole(px, py);
-      if (tg.bomb) { hole(px, py, true); blastSection(tg.el, px, py); return; }
+      if (tg.bomb) { hole(px, py, true); blastSection(tg.el, px, py); smokeAt(px, py); return; }
       if (!reduce) document.body.animate(Array.from({ length: 7 }, (_, n) => ({ transform: n === 6 ? 'none' : `translate(${rand(-14, 14) * p}px, ${rand(-10, 10) * p}px)` })), { duration: 460, easing: 'ease-out' });
       if (tg.edge) return;
       if (tg.header && tg.el) {
@@ -586,6 +592,51 @@
       }
       document.body.appendChild(svg);
     }
+    /* ---------- smoke: once a bomb has gone off, it hangs over the site until repaired ---------- */
+    const smoke = { cv: null, ctx: null, sprite: null, src: [], puffs: [], raf: 0, last: 0 };
+    function smokeAt(px, py) {
+      if (reduce) return;
+      smoke.src.push({ x: px, y: py });
+      if (!smoke.cv) {
+        smoke.cv = document.createElement('canvas');
+        smoke.cv.setAttribute('data-site-slap', '');
+        smoke.cv.style.cssText = `position:fixed;inset:0;width:100vw;height:100vh;z-index:${TOP - 1};pointer-events:none`;
+        document.body.appendChild(smoke.cv);
+        smoke.ctx = smoke.cv.getContext('2d');
+        // One soft puff, drawn once and stamped many times.
+        const sp = document.createElement('canvas'); sp.width = sp.height = 128;
+        const g = sp.getContext('2d'), grad = g.createRadialGradient(64, 64, 4, 64, 64, 64);
+        grad.addColorStop(0, 'rgba(150,150,144,0.85)'); grad.addColorStop(0.5, 'rgba(128,128,122,0.4)'); grad.addColorStop(1, 'rgba(120,120,114,0)');
+        g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
+        smoke.sprite = sp;
+      }
+      if (!smoke.raf) { smoke.last = performance.now(); smoke.raf = requestAnimationFrame(smokeFrame); }
+    }
+    function smokeFrame(now) {
+      const c = smoke.cv, g = smoke.ctx, dt = Math.min(0.05, (now - smoke.last) / 1000);
+      smoke.last = now;
+      if (c.width !== innerWidth || c.height !== innerHeight) { c.width = innerWidth; c.height = innerHeight; }
+      g.clearRect(0, 0, c.width, c.height);
+      // Thick plumes from each crater, and a thin haze drifting up across whatever is on screen.
+      smoke.src.forEach((s) => { if (Math.random() < 0.3) smoke.puffs.push({ x: s.x + rand(-70, 70), y: s.y + rand(-30, 20), vx: rand(-16, 26), vy: rand(-80, -34), r: rand(36, 76), grow: rand(34, 64), life: 1, fade: rand(0.14, 0.22), a: 0.5 }); });
+      if (Math.random() < 0.08) smoke.puffs.push({ x: scrollX + rand(-100, innerWidth + 100), y: scrollY + innerHeight + 120, vx: rand(-14, 14), vy: rand(-46, -22), r: rand(140, 240), grow: 18, life: 1, fade: rand(0.05, 0.08), a: 0.2 });
+      if (smoke.puffs.length > 160) smoke.puffs.splice(0, smoke.puffs.length - 160);
+      smoke.puffs.forEach((p) => {
+        p.x += p.vx * dt; p.y += p.vy * dt; p.r += p.grow * dt; p.life -= p.fade * dt;
+        const sx = p.x - scrollX, sy = p.y - scrollY;
+        if (p.life <= 0 || sx < -p.r || sx > innerWidth + p.r || sy < -p.r || sy > innerHeight + p.r) return;
+        g.globalAlpha = p.a * Math.min(1, (1 - p.life) * 6) * Math.min(1, p.life * 1.6);
+        g.drawImage(smoke.sprite, sx - p.r, sy - p.r, p.r * 2, p.r * 2);
+      });
+      smoke.puffs = smoke.puffs.filter((p) => p.life > 0);
+      smoke.raf = requestAnimationFrame(smokeFrame);
+    }
+    function clearSmoke() {
+      cancelAnimationFrame(smoke.raf);
+      if (smoke.cv) smoke.cv.remove();
+      Object.assign(smoke, { cv: null, ctx: null, src: [], puffs: [], raf: 0 });
+    }
+
     // The bomb: everything in the block is thrown outward from the blast, in a wave.
     function blastSection(el, px, py) {
       if (!reduce) document.body.animate(Array.from({ length: 12 }, (_, n) => ({ transform: n === 11 ? 'none' : `translate(${rand(-34, 34)}px, ${rand(-26, 26)}px) rotate(${rand(-0.6, 0.6)}deg)` })), { duration: 900, easing: 'ease-out' });
@@ -628,6 +679,7 @@
     }
     function repair() {
       document.querySelectorAll('svg[data-site-slap]').forEach((c) => c.remove());
+      clearSmoke();
       saved.forEach((style, el) => {
         el.style.transition = 'transform 700ms cubic-bezier(.3,1.3,.5,1), opacity 300ms ease';
         el.style.transform = 'none'; el.style.opacity = '';
@@ -731,7 +783,7 @@
 
   let game = null;
   const API = {
-    version: '1.1.0',
+    version: '1.2.0',
     /** Mount the game. Pass { target: element } to place it inline; otherwise it adds a floating launcher. */
     mount(options) { if (game) game.destroy(); game = create(options || {}); return game; },
     open(options) { if (!game) game = create(options || {}); game.open(); return game; },

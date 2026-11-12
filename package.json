@@ -1,6 +1,6 @@
 {
   "name": "site-slap",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "A two-player stick-figure slap game that wrecks the page it is installed on. One file, no dependencies.",
   "main": "site-slap.js",
   "files": ["site-slap.js"],

@@ -15,14 +15,14 @@ One file. No dependencies. No build step. One button puts everything back.
 Paste this before the closing `</body>` tag. A "Slap this site" button appears in the corner of the page.
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.1.0/site-slap.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.2.0/site-slap.js"></script>
 ```
 
 To place the ring inside your page instead, point it at an element:
 
 ```html
 <div id="ring"></div>
-<script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.1.0/site-slap.js"
+<script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.2.0/site-slap.js"
         data-target="#ring"></script>
 ```
 
@@ -48,11 +48,11 @@ SiteSlap.mount({ target: document.querySelector('#ring') });
 | --- | --- |
 | under 1 second | A pat |
 | 1 to 1.7 seconds | Into the ropes |
-| 1.7 to 2.3 seconds | Out of the ring, into a nearby section |
+| 1.7 to 2.3 seconds | Out of the ring: into a nearby section, or a long drop to the footer |
 | 2.3 to 2.9 seconds | Across the page, with the page scrolling to follow |
 | 2.9 to 3.4 seconds | Into the header: it tilts and its links fall off |
 | 3.4 to 4.1 seconds | Through the website: a hole punched in the page |
-| a completely full meter | A bomb. A whole section is blown apart |
+| a completely full meter | A bomb. A whole section is blown apart, and smoke hangs over the page until it is repaired |
 
 ## Options
 
