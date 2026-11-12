@@ -1,4 +1,4 @@
-/*! site-slap v1.3.1 | MIT License | https://github.com/Mupran/site-slap */
+/*! site-slap v1.4.0 | MIT License | https://github.com/Mupran/site-slap */
 // A two-player stick-figure slap game that wrecks the page it is installed on.
 // One file, no dependencies. Drop it in with a <script> tag.
 (function (global) {
@@ -12,7 +12,8 @@
     computer: false,          // start against the computer instead of a second player
     launcherText: 'Slap this site',
     position: 'right',        // launcher corner: 'right' or 'left'
-    target: null,             // element to mount inline; omit for a floating launcher
+    target: null,             // element to hold the ring; omit and it gets a section of its own
+    placement: 'end',         // without a target: 'end' adds the ring as a section at the end of the page, 'overlay' floats it over the page
     fighters: false,          // page fighters: false, true (on by default) or 'ask' (offer first)
   };
   const INK = '#121311', PAPER = '#ecebe4', ROPE = '#77786f';
@@ -41,6 +42,8 @@
     .panel { color: ${PAPER}; background: ${INK}; text-align: center; line-height: 1.45; }
     .panel.float { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); width: min(720px, calc(100vw - 20px)); max-height: calc(100vh - 28px); overflow: auto; z-index: ${TOP + 2}; padding: 14px; border: 1px solid #34352f; border-radius: 22px; box-shadow: 0 30px 70px -20px rgba(0,0,0,.75); }
     .panel.inline { padding: 22px 18px; border-radius: 22px; }
+    .intro { margin: 0 auto 16px; max-width: 46ch; font-size: 15px; color: #a9a89f; }
+    .intro strong { display: block; margin-bottom: 4px; font-size: 20px; color: ${PAPER}; }
     .start { display: inline-flex; align-items: center; gap: 10px; padding: 15px 28px; border-radius: 999px; background: ${PAPER}; color: ${INK}; font-weight: 800; font-size: 18px; }
     canvas { display: block; width: 100%; aspect-ratio: 16 / 9; border: 1px solid #34352f; border-radius: 16px; background: #0b0c0a; touch-action: pan-y; }
     .status { margin: 12px 0 0; min-height: 1.5em; font-weight: 700; font-size: 16px; }
@@ -648,7 +651,22 @@
     const opts = Object.assign({}, DEFAULTS, options);
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
     const COLORS = opts.colors, NAMES = opts.names;
+    // Without a target the ring gets a section of its own at the end of the page, so it never
+    // covers the content it is about to wreck. 'overlay' keeps the old floating panel.
+    const overlayMode = !opts.target && opts.placement === 'overlay';
+    let section = null;
+    if (!opts.target && !overlayMode) {
+      section = document.createElement('div');
+      section.setAttribute('data-site-slap-section', '');
+      section.style.cssText = 'display:block;box-sizing:border-box;clear:both;width:100%;max-width:780px;margin:56px auto;padding:0 16px';
+      // Before the site footer when it sits directly in <body>; otherwise at the very end, so
+      // nothing is slipped inside markup a framework is managing.
+      const foot = [...document.body.children].find((e) => e.matches('footer, [role="contentinfo"]'));
+      if (foot) document.body.insertBefore(section, foot); else document.body.appendChild(section);
+      opts.target = section;
+    }
     const inline = !!opts.target;
+    const jumper = !!section; // the corner button that takes the visitor down to their own ring
     const family = getComputedStyle(document.body).fontFamily || 'system-ui, sans-serif';
 
     /* ---------- interface, kept in a shadow root so the host page cannot restyle it ---------- */
@@ -656,8 +674,9 @@
     host.setAttribute('data-site-slap-host', '');
     const shadow = host.attachShadow({ mode: 'open' });
     shadow.innerHTML = `<style>${CSS} .launch, .fix, .panel, .ask { font-family: ${family.replace(/"/g, "'")}; }</style>
-      ${inline ? '' : `<button type="button" class="launch ${opts.position === 'left' ? 'left' : 'right'}">${opts.launcherText}</button>`}
+      ${inline && !jumper ? '' : `<button type="button" class="launch ${opts.position === 'left' ? 'left' : 'right'}">${opts.launcherText}</button>`}
       <div class="panel ${inline ? 'inline' : 'float'}" style="font-family:${family.replace(/"/g, "'")}" ${inline ? '' : 'hidden'}>
+        ${jumper ? `<p class="intro"><strong>${opts.launcherText}</strong>A two-player stick-figure slap game. Hit hard enough and the loser lands on this page and breaks it. One button puts everything back.</p>` : ''}
         ${inline ? '<button type="button" class="start">&#9654; Play</button>' : ''}
         <div class="arena" ${inline ? 'hidden' : ''}>
           <canvas aria-label="A boxing ring with two stick figures facing each other"></canvas>
@@ -681,7 +700,12 @@
     const panel = $('.panel'), arena = $('.arena'), cv = $('canvas'), ctx = cv.getContext('2d');
     const btns = [...shadow.querySelectorAll('.slap')], labels = btns.map((b) => b.querySelector('span'));
     const statusEl = $('.status'), modeBtn = $('.mode'), fixBtn = $('.repair'), quitBtn = $('.quit'), pill = $('.fix');
-    const launch = $('.launch'), startBtn = $('.start'), fToggle = $('.ftoggle');
+    const launch = $('.launch'), startBtn = $('.start'), fToggle = $('.ftoggle'), intro = $('.intro');
+    // The corner button only shows while the ring is off screen and nobody is playing.
+    let ringSeen = false;
+    const showJump = () => { if (jumper) launch.hidden = running || ringSeen; };
+    const seer = jumper && 'IntersectionObserver' in window ? new IntersectionObserver(([e]) => { ringSeen = e.isIntersecting; showJump(); }) : null;
+    if (seer) seer.observe(host);
     const amb = opts.fighters ? createFighters({ anchor: inline ? host : null, shadow, toggle: fToggle, colors: COLORS, mode: opts.fighters === 'ask' ? 'ask' : 'on' }) : null;
     if (!amb) fToggle.hidden = true;
 
@@ -1337,6 +1361,7 @@
       panel.hidden = false; arena.hidden = false;
       if (launch) launch.hidden = true;
       if (startBtn) startBtn.hidden = true;
+      if (intro) intro.hidden = true;
       size();
       men.forEach((f, i) => Object.assign(f, mk(i)));
       state = 'ready'; running = true; last = performance.now(); turn = 0;
@@ -1357,7 +1382,7 @@
     function close() {
       if (state === 'busy') return;
       running = false; state = 'off';
-      if (inline) { arena.hidden = true; startBtn.hidden = false; } else { panel.hidden = true; launch.hidden = false; }
+      if (inline) { arena.hidden = true; startBtn.hidden = false; if (intro) intro.hidden = false; showJump(); } else { panel.hidden = true; launch.hidden = false; }
       if (amb) amb.resume();
     }
     const onResize = () => { if (running) size(); };
@@ -1368,14 +1393,14 @@
 
     return {
       open, close, repair,
-      destroy() { running = false; repair(); if (amb) amb.destroy(); removeEventListener('keydown', onDown); removeEventListener('keyup', onUp); removeEventListener('resize', onResize); if (overlay) overlay.remove(); host.remove(); },
+      destroy() { running = false; repair(); if (seer) seer.disconnect(); if (section) section.remove(); if (amb) amb.destroy(); removeEventListener('keydown', onDown); removeEventListener('keyup', onUp); removeEventListener('resize', onResize); if (overlay) overlay.remove(); host.remove(); },
     };
   }
 
   let game = null;
   const API = {
-    version: '1.3.1',
-    /** Mount the game. Pass { target: element } to place it inline; otherwise it adds a floating launcher. */
+    version: '1.4.0',
+    /** Mount the game. Pass { target: element } to place the ring there; otherwise it gets a section at the end of the page. */
     mount(options) { if (game) game.destroy(); game = create(options || {}); return game; },
     open(options) { if (!game) game = create(options || {}); game.open(); return game; },
     close() { if (game) game.close(); },
@@ -1393,6 +1418,7 @@
       if (script.hasAttribute('data-computer')) o.computer = true;
       if (script.getAttribute('data-position')) o.position = script.getAttribute('data-position');
       if (script.getAttribute('data-label')) o.launcherText = script.getAttribute('data-label');
+      if (script.getAttribute('data-placement')) o.placement = script.getAttribute('data-placement');
       if (script.hasAttribute('data-fighters')) o.fighters = script.getAttribute('data-fighters') === 'ask' ? 'ask' : true;
       API.mount(o);
     };

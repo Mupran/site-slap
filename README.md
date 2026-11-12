@@ -12,6 +12,8 @@ One file. No dependencies. No build step. One button puts everything back.
 
 ## What's new
 
+**1.4: the ring gets its own place on the page.** The game no longer floats over your site. Without `data-target`, the ring is added as its own section at the end of the page, just above your footer, so the figures fly out of it and land on your real content instead of disappearing behind a panel. The "Slap this site" button in the corner now takes visitors down to the ring and only shows while the ring is off screen. Want the old floating panel back? Add `data-placement="overlay"`.
+
 **1.3: page fighters.** Two small figures now live along the bottom of the window, if you switch them on. At the top of the page they lean on opposite walls like strangers. As the visitor scrolls they notice each other, walk in and trade taunts, and by the time the ring arrives they are in a full brawl: shoves, slaps, a headlock, a leg pull, a tackle and a scrap on the floor. Press Play and they flip into the ring. On phones and tablets, tilting the device tips the uphill one over and slides him into the other.
 
 ![The page fighters: strangers at the walls, taunting, then brawling](shots/fighters.jpg)
@@ -28,24 +30,24 @@ One file. No dependencies. No build step. One button puts everything back.
 
 ## Install
 
-Paste this before the closing `</body>` tag. A "Slap this site" button appears in the corner of the page.
+Paste this before the closing `</body>` tag. The ring is added as its own section at the end of the page, above your footer, so it never covers your content. A "Slap this site" button in the corner takes visitors down to it.
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.3.1/site-slap.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.4.0/site-slap.js"></script>
 ```
 
 To switch on the page fighters, add `data-fighters`:
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.3.1/site-slap.js"
+<script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.4.0/site-slap.js"
         data-fighters="on"></script>
 ```
 
-To place the ring inside your page instead, point it at an element:
+To put the ring somewhere else on the page, point it at an element:
 
 ```html
 <div id="ring"></div>
-<script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.3.1/site-slap.js"
+<script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.4.0/site-slap.js"
         data-target="#ring"></script>
 ```
 
@@ -83,18 +85,20 @@ Set these as attributes on the script tag.
 
 | Attribute | What it does |
 | --- | --- |
-| `data-target` | CSS selector of an element to hold the ring. Without it, a floating launcher is added. |
+| `data-target` | CSS selector of an element to hold the ring. Without it, the ring gets its own section at the end of the page. |
+| `data-placement` | Without a target: `end` (default) adds the ring as a section at the end of the page, above a footer that sits directly in `<body>`. `overlay` floats the game over the page, as before 1.4. |
 | `data-fighters` | Page fighters. `on` shows them straight away; `ask` first offers "Big fight happening below." with Watch here / No thanks. Left out, there are no page fighters. |
 | `data-computer` | Start against the computer instead of a second player. |
-| `data-position` | `left` or `right`, the corner for the floating launcher. Default `right`. |
-| `data-label` | Text for the floating launcher button. Default "Slap this site". |
+| `data-position` | `left` or `right`, the corner for the "Slap this site" button. Default `right`. |
+| `data-label` | Text for the "Slap this site" button and the heading above the ring. Default "Slap this site". |
 | `data-manual` | Load without setting anything up, then call `SiteSlap.mount()` yourself. |
 
 Or from JavaScript:
 
 ```js
 const game = SiteSlap.mount({
-  target: document.querySelector('#ring'), // omit for the floating launcher
+  target: document.querySelector('#ring'), // omit for a section at the end of the page
+  placement: 'end',                        // without a target: 'end' or 'overlay'
   colors: ['#2ee88f', '#ff7a45'],
   names: ['Player 1', 'Player 2'],
   computer: false,
@@ -119,7 +123,7 @@ game.destroy();  // remove the game entirely
 
 ## The page fighters in detail
 
-- **Scroll-driven.** With an inline ring, the fight builds as the ring scrolls into view. With the floating launcher, it builds toward the foot of the page.
+- **Scroll-driven.** The fight builds as the ring scrolls into view. With `data-placement="overlay"`, it builds toward the foot of the page.
 - **They walk, they do not slide.** Legs are driven by the distance covered, so feet stay planted. Scroll fast and they jog.
 - **A choreographed brawl.** Each move is a pose for two figures on a small rig with knees and elbows. Dust only covers them for a moment when it peaks.
 - **Tilt.** On phones and tablets they follow real gravity, worked out from the device's orientation. Nothing happens until the phone is rolled about 14 degrees, so picking it up never tips anyone over. Past that they slide the way it points like a drop of water on glass, sideways and up the screen too, and drop back to the floor when it is level. iPhones ask the visitor to allow motion first.

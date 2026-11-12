@@ -108,11 +108,11 @@
   <section id="install">
     <div class="wrap">
       <h2>Install</h2>
-      <p style="margin:0 0 18px;max-width:60ch;color:var(--muted)">Paste this before the closing <code>&lt;/body&gt;</code> tag. A “Slap this site” button appears in the corner.</p>
-      <pre><code>&lt;script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.3.1/site-slap.js"&gt;&lt;/script&gt;</code></pre>
-      <p style="margin:28px 0 18px;max-width:60ch;color:var(--muted)">To place the ring inside your page, as it is above, point it at an element.</p>
+      <p style="margin:0 0 18px;max-width:60ch;color:var(--muted)">Paste this before the closing <code>&lt;/body&gt;</code> tag. The ring is added as its own section at the end of the page, above your footer, so it never covers your content. A “Slap this site” button in the corner takes visitors down to it.</p>
+      <pre><code>&lt;script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.4.0/site-slap.js"&gt;&lt;/script&gt;</code></pre>
+      <p style="margin:28px 0 18px;max-width:60ch;color:var(--muted)">To put the ring somewhere else, as it is above, point it at an element.</p>
       <pre><code>&lt;div id="ring"&gt;&lt;/div&gt;
-&lt;script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.3.1/site-slap.js"
+&lt;script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.4.0/site-slap.js"
         data-target="#ring"&gt;&lt;/script&gt;</code></pre>
     </div>
   </section>
@@ -121,11 +121,12 @@
     <div class="wrap">
       <h2>Options</h2>
       <table>
-        <tr><th><code>data-target</code></th><td>CSS selector of an element to hold the ring. Without it, a floating launcher is added.</td></tr>
+        <tr><th><code>data-target</code></th><td>CSS selector of an element to hold the ring. Without it, the ring gets its own section at the end of the page.</td></tr>
+        <tr><th><code>data-placement</code></th><td>Without a target: <code>end</code> (default) adds the ring at the end of the page, <code>overlay</code> floats it over the page instead.</td></tr>
         <tr><th><code>data-fighters</code></th><td>Page fighters along the bottom of the window. <code>on</code> shows them straight away, <code>ask</code> offers first. This page has them on.</td></tr>
         <tr><th><code>data-computer</code></th><td>Start against the computer instead of a second player.</td></tr>
-        <tr><th><code>data-position</code></th><td><code>left</code> or <code>right</code>, the corner for the floating launcher.</td></tr>
-        <tr><th><code>data-label</code></th><td>Text for the floating launcher button.</td></tr>
+        <tr><th><code>data-position</code></th><td><code>left</code> or <code>right</code>, the corner for the “Slap this site” button.</td></tr>
+        <tr><th><code>data-label</code></th><td>Text for the “Slap this site” button.</td></tr>
         <tr><th><code>data-manual</code></th><td>Load without setting anything up, then call <code>SiteSlap.mount()</code> yourself.</td></tr>
       </table>
     </div>
