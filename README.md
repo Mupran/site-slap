@@ -15,14 +15,14 @@ One file. No dependencies. No build step. One button puts everything back.
 Paste this before the closing `</body>` tag. A "Slap this site" button appears in the corner of the page.
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.2.0/site-slap.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.2.1/site-slap.js"></script>
 ```
 
 To place the ring inside your page instead, point it at an element:
 
 ```html
 <div id="ring"></div>
-<script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.2.0/site-slap.js"
+<script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.2.1/site-slap.js"
         data-target="#ring"></script>
 ```
 

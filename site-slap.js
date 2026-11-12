@@ -1,4 +1,4 @@
-/*! site-slap v1.2.0 | MIT License | https://github.com/Mupran/site-slap */
+/*! site-slap v1.2.1 | MIT License | https://github.com/Mupran/site-slap */
 // A two-player stick-figure slap game that wrecks the page it is installed on.
 // One file, no dependencies. Drop it in with a <script> tag.
 (function (global) {
@@ -377,7 +377,7 @@
         return far.length ? { ...pointIn(pick(far).el), line: pick(['Mind the content.', 'That section had a family.']) } : { ...anywhere, line: 'Off the page.' };
       }
       // Out of the ring: sometimes it is a long drop to the footer.
-      if (Math.random() < 0.4) {
+      if (Math.random() < 0.5) {
         const foot = [...document.querySelectorAll('footer, [role="contentinfo"]')].find((e) => !ours(e) && e.getBoundingClientRect().width > 100)
           || list.map((b) => b.el).sort((a, b) => b.getBoundingClientRect().top - a.getBoundingClientRect().top)[0];
         if (foot) { const r = foot.getBoundingClientRect(); return { el: foot, x: r.left + scrollX + r.width * rand(0.25, 0.75), y: r.top + scrollY + Math.min(r.height * 0.5, 200), line: pick(['All the way down to the footer.', 'He found the bottom of the page.']) }; }
@@ -783,7 +783,7 @@
 
   let game = null;
   const API = {
-    version: '1.2.0',
+    version: '1.2.1',
     /** Mount the game. Pass { target: element } to place it inline; otherwise it adds a floating launcher. */
     mount(options) { if (game) game.destroy(); game = create(options || {}); return game; },
     open(options) { if (!game) game = create(options || {}); game.open(); return game; },
