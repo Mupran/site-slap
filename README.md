@@ -31,13 +31,13 @@ One file. No dependencies. No build step. One button puts everything back.
 Paste this before the closing `</body>` tag. A "Slap this site" button appears in the corner of the page.
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.3.0/site-slap.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.3.1/site-slap.js"></script>
 ```
 
 To switch on the page fighters, add `data-fighters`:
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.3.0/site-slap.js"
+<script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.3.1/site-slap.js"
         data-fighters="on"></script>
 ```
 
@@ -45,7 +45,7 @@ To place the ring inside your page instead, point it at an element:
 
 ```html
 <div id="ring"></div>
-<script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.3.0/site-slap.js"
+<script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.3.1/site-slap.js"
         data-target="#ring"></script>
 ```
 
@@ -122,7 +122,7 @@ game.destroy();  // remove the game entirely
 - **Scroll-driven.** With an inline ring, the fight builds as the ring scrolls into view. With the floating launcher, it builds toward the foot of the page.
 - **They walk, they do not slide.** Legs are driven by the distance covered, so feet stay planted. Scroll fast and they jog.
 - **A choreographed brawl.** Each move is a pose for two figures on a small rig with knees and elbows. Dust only covers them for a moment when it peaks.
-- **Tilt.** On phones and tablets the uphill fighter loses his footing, goes down and slides. Tilting the other way slides the whole scrap across. iPhones ask the visitor to allow motion first.
+- **Tilt.** On phones and tablets they follow real gravity, worked out from the device's orientation. Nothing happens until the phone is rolled about 14 degrees, so picking it up never tips anyone over. Past that they slide the way it points like a drop of water on glass, sideways and up the screen too, and drop back to the floor when it is level. iPhones ask the visitor to allow motion first.
 - **Out of the way.** They sit on a strip along the bottom edge, never block clicks, and a "Page fighters" switch in the game turns them off. The choice is remembered.
 
 ![Fighters on a phone](shots/phone.jpg)

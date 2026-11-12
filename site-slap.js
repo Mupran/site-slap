@@ -1,4 +1,4 @@
-/*! site-slap v1.3.0 | MIT License | https://github.com/Mupran/site-slap */
+/*! site-slap v1.3.1 | MIT License | https://github.com/Mupran/site-slap */
 // A two-player stick-figure slap game that wrecks the page it is installed on.
 // One file, no dependencies. Drop it in with a <script> tag.
 (function (global) {
@@ -77,7 +77,7 @@
      Page fighters (optional): two small figures who live along the bottom of the window.
      They lean on opposite walls at the top of the page, notice each other on scroll, walk
      in, taunt, and are brawling by the time the ring (or the foot of the page) arrives.
-     On phones and tablets, tilting the device tips the uphill one over into the other.
+     On phones and tablets, tilting the device slides them the way gravity points.
      ==================================================================================== */
   function createFighters(cfg) {
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) return null;
@@ -89,7 +89,8 @@
       set(v) { try { localStorage.setItem(KEY, v); } catch (e) { /* private mode */ } },
     };
     const coarse = matchMedia('(pointer: coarse)').matches;
-    const INK = '#121311', PAPER = '#ecebe4', H = 180;
+    const INK = '#121311', PAPER = '#ecebe4';
+    let GY = 0; // the floor: y of the bottom edge the fighters stand on
     const rand = (a, b) => a + Math.random() * (b - a);
     const pick = (l) => l[Math.floor(Math.random() * l.length)];
     const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -111,10 +112,12 @@
     const reach = (P) => Math.max(Math.cos(P.lF) * UP + Math.cos(P.lF + P.kF) * LOW, Math.cos(P.lB) * UP + Math.cos(P.lB + P.kB) * LOW);
     const hipOf = (P) => (P.hy == null ? reach(P) : P.hy);
 
-    const mk = (i) => ({ i, side: i ? 1 : -1, color: cfg.colors[i], x: -1, face: i ? -1 : 1, phase: rand(0, 6), moving: false, act: null, bubble: '', P: { ...STAND, hy: reach(STAND) }, fall: null });
+    const mk = (i) => ({ i, side: i ? 1 : -1, color: cfg.colors[i], x: -1, face: i ? -1 : 1, phase: rand(0, 6), moving: false, act: null, bubble: '', P: { ...STAND, hy: reach(STAND) }, y: 0, vx: 0, vy: 0, spin: 0, tumble: null });
     const A = mk(0), B = mk(1);
     let on = false, away = false, cv = null, ctx = null, raf = 0, last = 0, t = 0;
-    let tilt = 0, tiltRaw = 0, gyro = false, listening = false;
+    // Gravity as it falls across the screen, from the device's orientation: gX toward the right
+    // edge, gD toward the bottom. A phone held normally reads about (0, 0.7).
+    let gX = 0, gD = 0.7, rawX = 0, rawD = 0.7, gyro = false, listening = false;
     let cloud = 0, fx = [], noticed = false, nextBit = 2.5, turnOf = 0;
     let brawl = null; // { x, v, att, plan, move, mt, byTilt }
 
@@ -166,7 +169,7 @@
     const give = (f, def, dur, delay = 0) => { f.act = { def, t: -delay, dur }; };
     function direct(dt, c) {
       nextBit -= dt;
-      if (nextBit > 0 || A.moving || B.moving || A.fall || B.fall) return;
+      if (nextBit > 0 || A.moving || B.moving || A.tumble || B.tumble) return;
       const me = turnOf ? B : A, you = turnOf ? A : B;
       turnOf = 1 - turnOf;
       if (c < 0.03) { give(me, pick(LOITER), rand(1.6, 2.6)); nextBit = rand(1.8, 3.4); return; }
@@ -253,12 +256,15 @@
       plan.push('getup', 'swap');
       return plan;
     }
-    function startBrawl(x, att, byTilt, fromFall) {
-      brawl = { x, v: 0, att, plan: script(!byTilt, fromFall), move: null, mt: 0, byTilt, ending: false };
-      A.act = B.act = null; A.bubble = B.bubble = ''; A.fall = B.fall = null;
+    const unwind = (f) => { f.P.rot = ((f.P.rot + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI; f.spin = 0; f.tumble = null; };
+    function startBrawl(x, att, byTilt, fromFall, y = 0, vx = 0, vy = 0) {
+      brawl = { x, y, vx, vy, att, plan: script(!byTilt, fromFall), move: null, mt: 0, byTilt, ending: false };
+      [A, B].forEach((f) => { f.act = null; f.bubble = ''; unwind(f); });
     }
-    function stepBrawl(dt, hot, keep, vw, edge) {
+    function stepBrawl(dt, hot, keep, vw, vh, edge, pull) {
       const b = brawl, S = scale(vw), speed = hot ? 1.3 : 1;
+      // The moment there is no reason left to fight, they break it up and get to their feet.
+      if (!keep && !b.ending && b.y <= 0.5) { b.ending = true; b.plan = []; b.move = MOVES.getup; b.mt = 0; b.hit = true; }
       while (!b.move) {
         if (!b.plan.length) {
           if (!keep) { brawl = null; return; }
@@ -274,42 +280,82 @@
       const [pa, pv] = b.move.fn(u);
       const X = b.att ? B : A, Y = b.att ? A : B;
       settle(X, pa, dt, 20); settle(Y, pv, dt, 20);
-      // Tilting slides the whole scrap downhill, to the wall.
-      if (b.byTilt && gyro && Math.abs(tilt) > 0.2) b.v += tilt * 1500 * dt;
-      b.v *= Math.pow(0.25, dt);
+      // Tilting slides the whole scrap wherever gravity now points, like a drop on glass.
+      if (b.byTilt) {
+        const G = 2300 * S;
+        if (pull) { b.vx += pull.x * G * dt; b.vy += pull.y * G * dt; }
+        if (!(pull && pull.y) && b.y > 0) b.vy += Math.max(0.35, gD) * G * dt;
+        const drag = Math.pow(0.35, dt);
+        b.vx *= drag; b.vy *= drag;
+        b.x += b.vx * dt; b.y -= b.vy * dt;
+        const maxLift = Math.max(0, GY - 70 - 150 * S);
+        if (b.y < 0) { b.y = 0; b.vy = 0; }
+        if (b.y > maxLift) { b.y = maxLift; b.vy *= -0.2; }
+      } else b.x = lerp(b.x, vw / 2, Math.min(1, dt * 4));
       const lo = edge + 84 * S, hi = vw - edge - 84 * S;
-      b.x = clamp(b.byTilt ? b.x + b.v * dt : lerp(b.x, vw / 2, Math.min(1, dt * 4)), lo, hi);
-      if (b.x === lo || b.x === hi) b.v = 0;
-      [A, B].forEach((f) => { f.x = b.x + f.side * f.P.ox * S; f.face = -f.side; f.moving = false; });
+      if (b.x < lo) { b.x = lo; b.vx *= -0.2; }
+      if (b.x > hi) { b.x = hi; b.vx *= -0.2; }
+      [A, B].forEach((f) => { f.x = b.x + f.side * f.P.ox * S; f.y = b.y; f.face = -f.side; f.moving = false; });
       if (b.move.hit != null && !b.hit && u >= b.move.hit) {
         b.hit = true;
-        fx.push({ kind: 'star', x: Y.x + rand(-8, 8), y: H - 8 - (Y.P.hy + 80) * S + rand(-6, 6), life: 1 });
-        if (Math.random() < 0.6) fx.push({ kind: 'word', text: pick(WORDS), x: b.x + rand(-26, 26), y: H - 8 - 205 * S, life: 1 });
+        fx.push({ kind: 'star', x: Y.x + rand(-8, 8), y: GY - b.y - (Y.P.hy + 80) * S + rand(-6, 6), life: 1 });
+        if (Math.random() < 0.6) fx.push({ kind: 'word', text: pick(WORDS), x: b.x + rand(-26, 26), y: GY - b.y - 205 * S, life: 1 });
       }
       cloud += ((b.move.smoke ? 1 : 0) - cloud) * Math.min(1, dt * 10);
       if (u >= 1) b.move = null;
     }
 
-    /* ---------- tilt: losing footing, going over, sliding downhill ---------- */
-    function stepFall(f, other, dt, dir, vw) {
-      const S = scale(vw), F = f.fall;
-      F.t += dt;
-      f.face = dir; f.bubble = ''; f.act = null; f.moving = false;
-      if (F.t < 0.42) {
+    /* ---------- tilt: gravity across the glass ----------
+       Nothing happens until the phone is rolled about 14 degrees to one side, so simply
+       picking it up never tips anyone over. Past that, a fighter loses his footing and
+       slides the way gravity points, like a drop of water: sideways, and up the screen too
+       if the top of the phone is tipped below the bottom. Level it and he drops back to
+       the floor and gets up. */
+    const SIDE = 0.24, LIFT = -0.15;
+    function force() {
+      const x = Math.abs(gX) > SIDE ? Math.sign(gX) * (Math.abs(gX) - SIDE * 0.6) : 0;
+      const y = gD < LIFT ? gD : 0; // negative pulls toward the top of the screen
+      return x || y ? { x, y } : null;
+    }
+    // Returns true when he has slid into the other one and a scrap has started.
+    function stepTumble(f, other, dt, pull, vw, S) {
+      const T = f.tumble, G = 2300 * S;
+      T.t += dt;
+      f.bubble = ''; f.act = null; f.moving = false;
+      const ax = pull ? pull.x * G : 0;
+      const ay = pull && pull.y ? pull.y * G : (f.y > 0 ? Math.max(0.35, gD) * G : 0); // down the screen is positive
+      if (T.stagger && T.t < 0.4) {
         // The floor has gone from under him: windmilling arms, feet scrabbling.
-        F.v += 240 * dt;
-        f.x += dir * F.v * dt * S;
-        settle(f, { ...STAND, lean: 0.25 + F.t * 1.3, head: -0.3, aF: 2.2 + Math.sin(t * 26) * 1.1, aB: -2.2 + Math.cos(t * 26) * 1.1, lF: Math.sin(t * 24) * 0.6, kF: -0.5, lB: -Math.sin(t * 24) * 0.6, kB: -0.5, ox: 0 }, dt, 22);
+        f.face = Math.sign(ax) || f.face;
+        f.vx += ax * 0.3 * dt;
+        f.x += f.vx * dt;
+        settle(f, { ...STAND, lean: 0.25 + T.t * 1.4, head: -0.3, aF: 2.2 + Math.sin(t * 26) * 1.1, aB: -2.2 + Math.cos(t * 26) * 1.1, lF: Math.sin(t * 24) * 0.6, kF: -0.5, lB: -Math.sin(t * 24) * 0.6, kB: -0.5, ox: 0 }, dt, 22);
       } else {
-        // Down on his front and gathering speed, legs in the air.
-        F.v += Math.max(0.35, Math.abs(tilt)) * 1500 * dt;
-        f.x += dir * F.v * dt * S;
-        settle(f, { ...STAND, rot: 1.42 + Math.sin(t * 16) * 0.1, hy: 15, lean: 0.1, head: -0.5, aF: 1.5, eF: 0.1, aB: 1.3, eB: 0.2, lF: -0.5 + Math.sin(t * 15) * 0.5, kF: -0.9, lB: -0.9 + Math.cos(t * 15) * 0.5, kB: -1.2, ox: 0 }, dt, 14);
+        f.vx += ax * dt; f.vy += ay * dt;
+        const drag = Math.pow(0.35, dt);
+        f.vx *= drag; f.vy *= drag;
+        f.x += f.vx * dt; f.y -= f.vy * dt;
+        const m = 36 * S, maxLift = Math.max(0, GY - 70 - 150 * S);
+        if (f.x < m) { f.x = m; f.vx *= -0.25; }
+        if (f.x > vw - m) { f.x = vw - m; f.vx *= -0.25; }
+        if (f.y < 0) { f.y = 0; f.vy *= -0.2; }
+        if (f.y > maxLift) { f.y = maxLift; f.vy *= -0.25; }
+        // He rolls with the ground he covers, curled up with his limbs flailing.
+        f.spin += ((f.vx - f.vy * 0.6) * dt) / (46 * S) * f.face;
+        settle(f, { ...STAND, hy: 34, lean: 0.55, head: 0.3, aF: 1.5 + Math.sin(t * 17) * 0.7, eF: 0.4, aB: 0.6 + Math.cos(t * 15) * 0.7, eB: 0.6, lF: 1.25 + Math.sin(t * 13) * 0.4, kF: -1.5, lB: 0.85 + Math.cos(t * 14) * 0.4, kB: -1.6, ox: 0 }, dt, 16);
+        f.P.rot = f.spin;
       }
-      if (Math.abs(other.x - f.x) < 74 * S) {
-        fx.push({ kind: 'star', x: other.x, y: H - 8 - 120 * S, life: 1 }, { kind: 'word', text: 'OOF', x: (f.x + other.x) / 2, y: H - 8 - 205 * S, life: 1 });
-        startBrawl((f.x + other.x) / 2 + dir * 16 * S, f.i, true, true);
+      const speed = Math.hypot(f.vx, f.vy);
+      if (Math.hypot(other.x - f.x, other.y - f.y) < 72 * S && (speed > 60 || other.tumble)) {
+        const mx = (f.x + other.x) / 2, my = (f.y + other.y) / 2;
+        fx.push({ kind: 'star', x: other.x, y: GY - my - 110 * S, life: 1 }, { kind: 'word', text: 'OOF', x: mx, y: GY - my - 200 * S, life: 1 });
+        startBrawl(mx, f.i, true, true, my, (f.vx + other.vx) / 2, (f.vy + other.vy) / 2);
+        [A, B].forEach((o) => { o.vx = o.vy = 0; });
+        return true;
       }
+      // Level again and back on the floor: he stops rolling and picks himself up.
+      if (!pull && f.y <= 0.5 && speed < 45 && T.t > 0.3) { unwind(f); f.vx = f.vy = 0; f.y = 0; }
+      return false;
     }
 
     /* ---------- drawing ---------- */
@@ -401,11 +447,12 @@
       raf = requestAnimationFrame(frame);
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now; t += dt;
-      const vw = innerWidth, S = scale(vw), ground = H - 8;
+      const vw = innerWidth, vh = cv.clientHeight || innerHeight, S = scale(vw);
+      GY = vh - 8;
       const dpr = Math.min(2, devicePixelRatio || 1);
-      if (cv.width !== Math.round(vw * dpr)) { cv.width = Math.round(vw * dpr); cv.height = Math.round(H * dpr); }
+      if (cv.width !== Math.round(vw * dpr) || cv.height !== Math.round(vh * dpr)) { cv.width = Math.round(vw * dpr); cv.height = Math.round(vh * dpr); }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, vw, H);
+      ctx.clearRect(0, 0, vw, vh);
       if (away) return;
 
       // With an inline ring the fight peaks as it scrolls into view; otherwise at the foot of the page.
@@ -418,13 +465,14 @@
         c = clamp(scrollY / Math.max(1, document.documentElement.scrollHeight - innerHeight), 0, 1);
         atGame = c > 0.96;
       }
-      tilt += (tiltRaw - tilt) * Math.min(1, dt * 7);
-      const tipping = gyro && Math.abs(tilt) > 0.3 && !atGame ? Math.sign(tilt) : 0;
+      gX += (rawX - gX) * Math.min(1, dt * 8);
+      gD += (rawD - gD) * Math.min(1, dt * 8);
+      const pull = gyro ? force() : null;
       const half = vw / 2, wall = 40 * S + 10, near = 30 * S;
-      const keep = atGame || c > 0.97 || !!(brawl && brawl.byTilt && gyro && Math.abs(tilt) > 0.2);
+      const keep = atGame || c > 0.97 || !!(brawl && brawl.byTilt && (pull || brawl.y > 1 || Math.hypot(brawl.vx, brawl.vy) > 50));
 
       if (brawl) {
-        stepBrawl(dt, atGame, keep, vw, wall);
+        stepBrawl(dt, atGame, keep, vw, vh, wall, pull);
       } else {
         cloud += (0 - cloud) * Math.min(1, dt * 10);
         // Where each should be standing for this much of the page.
@@ -434,10 +482,13 @@
         if (c < 0.02) noticed = false;
         for (const f of [A, B]) {
           const other = f.i ? A : B;
-          if (tipping && f.side === -tipping && !f.fall && Math.abs(other.x - f.x) > 80 * S) f.fall = { t: 0, v: 0 };
-          if (f.fall) {
-            if (!tipping) f.fall = null; // level again: he picks himself up
-            else { stepFall(f, other, dt, tipping, vw); if (brawl) break; continue; }
+          if (!f.tumble && (pull || f.y > 0.5)) {
+            const pinned = pull && !pull.y && ((pull.x > 0 && f.x > vw - wall - 4) || (pull.x < 0 && f.x < wall + 4)); // already against the downhill wall
+            if (!pinned) f.tumble = { t: 0, stagger: f.y < 0.5 && !!pull && pull.x !== 0 };
+          }
+          if (f.tumble) {
+            if (stepTumble(f, other, dt, pull, vw, S)) break;
+            continue;
           }
           const d = spot(f) - f.x, run = Math.abs(d) > 150;
           const maxStep = (run ? 560 : 250) * S * dt, step = clamp(d, -maxStep, maxStep);
@@ -456,14 +507,14 @@
         }
         if (!brawl) {
           direct(dt, c);
-          const ready = Math.abs(A.x - B.x) < near * 2 + 12 && !A.moving && !B.moving && !A.fall && !B.fall;
+          const ready = Math.abs(A.x - B.x) < near * 2 + 12 && !A.moving && !B.moving && !A.tumble && !B.tumble;
           if (ready && (atGame || c > 0.97)) startBrawl((A.x + B.x) / 2, turnOf, false, false);
         }
       }
       const first = brawl && brawl.att === 0 ? B : A, second = first === A ? B : A; // attacker drawn on top
-      drawMan(ctx, first, S, ground, 1 - cloud);
-      drawMan(ctx, second, S, ground, 1 - cloud);
-      drawCloud(ctx, brawl ? brawl.x : (A.x + B.x) / 2, ground, S, cloud);
+      drawMan(ctx, first, S, GY - first.y, 1 - cloud);
+      drawMan(ctx, second, S, GY - second.y, 1 - cloud);
+      drawCloud(ctx, brawl ? brawl.x : (A.x + B.x) / 2, GY - (brawl ? brawl.y : 0), S, cloud);
       drawFx(ctx, dt);
     }
 
@@ -473,10 +524,11 @@
       cv = document.createElement('canvas');
       cv.setAttribute('data-site-slap', '');
       cv.setAttribute('aria-hidden', 'true');
-      cv.style.cssText = `position:fixed;left:0;bottom:0;width:100vw;height:${H}px;z-index:${TOP - 2};pointer-events:none`;
+      cv.style.cssText = `position:fixed;inset:0;width:100%;height:100%;z-index:${TOP - 2};pointer-events:none`;
       document.body.appendChild(cv);
       ctx = cv.getContext('2d');
       A.x = B.x = -1; brawl = null; noticed = false;
+      [A, B].forEach((f) => { f.y = 0; f.vx = f.vy = 0; unwind(f); });
       last = performance.now();
       raf = requestAnimationFrame(frame);
       sync();
@@ -494,11 +546,17 @@
       if (listening) return;
       listening = true;
       addEventListener('deviceorientation', (e) => {
-        if (e.gamma == null) return;
+        if (e.beta == null || e.gamma == null) return;
         gyro = true;
-        const angle = (screen.orientation && screen.orientation.angle) || 0;
-        const side = Math.abs(angle) === 90 ? e.beta * (angle === 90 ? 1 : -1) : e.gamma;
-        tiltRaw = clamp(side / 24, -1, 1);
+        // Work out where gravity points across the glass. Reading gamma alone goes wrong once
+        // the phone is held upright or tipped back past vertical, where its sign flips.
+        const b = e.beta * Math.PI / 180, g = e.gamma * Math.PI / 180;
+        let x = Math.cos(b) * Math.sin(g), y = Math.sin(b);
+        const angle = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
+        if (angle === 90) [x, y] = [y, -x];
+        else if (angle === 270 || angle === -90) [x, y] = [-y, x];
+        else if (angle === 180) [x, y] = [-x, -y];
+        rawX = x; rawD = y;
       });
     }
     // iOS only hands over motion data after a tap, so this has to run inside one.
@@ -550,9 +608,10 @@
     return {
       destroy() { disable(); },
       active: () => on && !away,
-      // For testing without a device: __fighters.tilt(1) leans right, -1 left, 0 level.
-      tilt(v) { gyro = true; tiltRaw = clamp(v, -1, 1); },
-      resume() { away = false; A.x = B.x = -1; brawl = null; },
+      // For testing without a device: gravity across the screen. tilt(0.6) rolls right, tilt(-0.6) left,
+      // tilt(0, -0.5) tips the top of the phone down, tilt(0) is level.
+      tilt(x, down = 0.7) { gyro = true; rawX = clamp(x, -1, 1); rawD = clamp(down, -1, 1); },
+      resume() { away = false; A.x = B.x = -1; brawl = null; [A, B].forEach((f) => { f.y = 0; f.vx = f.vy = 0; unwind(f); }); },
       // Both leap from the bottom of the window into the ring, wherever it is on screen.
       jumpInto(ring, home, floor, width) {
         return new Promise((res) => {
@@ -1315,7 +1374,7 @@
 
   let game = null;
   const API = {
-    version: '1.3.0',
+    version: '1.3.1',
     /** Mount the game. Pass { target: element } to place it inline; otherwise it adds a floating launcher. */
     mount(options) { if (game) game.destroy(); game = create(options || {}); return game; },
     open(options) { if (!game) game = create(options || {}); game.open(); return game; },
