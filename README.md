@@ -10,19 +10,42 @@ One file. No dependencies. No build step. One button puts everything back.
 
 **[Play the live demo](https://mupran.github.io/site-slap/)**
 
+## What's new
+
+**1.3: page fighters.** Two small figures now live along the bottom of the window, if you switch them on. At the top of the page they lean on opposite walls like strangers. As the visitor scrolls they notice each other, walk in and trade taunts, and by the time the ring arrives they are in a full brawl: shoves, slaps, a headlock, a leg pull, a tackle and a scrap on the floor. Press Play and they flip into the ring. On phones and tablets, tilting the device tips the uphill one over and slides him into the other.
+
+![The page fighters: strangers at the walls, taunting, then brawling](shots/fighters.jpg)
+
+![Both fighters flipping into the ring when Play is pressed](shots/jump.jpg)
+
+**1.2: footer falls and smoke.** An out-of-the-ring slap lands in the page footer half the time. After a bomb, smoke rises from the crater and a haze hangs over the page until it is repaired.
+
+![A slap that sends the loser all the way down to the footer](shots/footer.jpg)
+
+**1.1: the bomb.** Fill the meter completely and the slap carries a bomb. A whole section is blown apart and a crater is left behind. Slaps also gained a wind-up spin, a freeze on contact, shock rings and a camera tilt.
+
+![The crater left after a bomb removes a section](shots/bomb.jpg)
+
 ## Install
 
 Paste this before the closing `</body>` tag. A "Slap this site" button appears in the corner of the page.
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.2.1/site-slap.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.3.0/site-slap.js"></script>
+```
+
+To switch on the page fighters, add `data-fighters`:
+
+```html
+<script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.3.0/site-slap.js"
+        data-fighters="on"></script>
 ```
 
 To place the ring inside your page instead, point it at an element:
 
 ```html
 <div id="ring"></div>
-<script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.2.1/site-slap.js"
+<script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.3.0/site-slap.js"
         data-target="#ring"></script>
 ```
 
@@ -61,6 +84,7 @@ Set these as attributes on the script tag.
 | Attribute | What it does |
 | --- | --- |
 | `data-target` | CSS selector of an element to hold the ring. Without it, a floating launcher is added. |
+| `data-fighters` | Page fighters. `on` shows them straight away; `ask` first offers "Big fight happening below." with Watch here / No thanks. Left out, there are no page fighters. |
 | `data-computer` | Start against the computer instead of a second player. |
 | `data-position` | `left` or `right`, the corner for the floating launcher. Default `right`. |
 | `data-label` | Text for the floating launcher button. Default "Slap this site". |
@@ -74,6 +98,7 @@ const game = SiteSlap.mount({
   colors: ['#2ee88f', '#ff7a45'],
   names: ['Player 1', 'Player 2'],
   computer: false,
+  fighters: false,                         // false, true (on by default) or 'ask'
   launcherText: 'Slap this site',
   position: 'right',
 });
@@ -91,6 +116,16 @@ game.destroy();  // remove the game entirely
 - **Finding a target.** The game looks at the page it is on: nearby blocks for a short flight, far ones for a long flight, `<header>` or `<nav>` for the header hit, and the middle of the document for the hole.
 - **The damage is real but reversible.** Elements are moved with CSS transforms only. Each element's original inline style is saved before it is touched and restored on repair, so nothing is removed from the page and layout never changes.
 - **Isolation.** The interface lives in a shadow root, so your CSS cannot restyle it and its CSS cannot leak into your page.
+
+## The page fighters in detail
+
+- **Scroll-driven.** With an inline ring, the fight builds as the ring scrolls into view. With the floating launcher, it builds toward the foot of the page.
+- **They walk, they do not slide.** Legs are driven by the distance covered, so feet stay planted. Scroll fast and they jog.
+- **A choreographed brawl.** Each move is a pose for two figures on a small rig with knees and elbows. Dust only covers them for a moment when it peaks.
+- **Tilt.** On phones and tablets the uphill fighter loses his footing, goes down and slides. Tilting the other way slides the whole scrap across. iPhones ask the visitor to allow motion first.
+- **Out of the way.** They sit on a strip along the bottom edge, never block clicks, and a "Page fighters" switch in the game turns them off. The choice is remembered.
+
+![Fighters on a phone](shots/phone.jpg)
 
 ## Good to know
 

@@ -1,4 +1,4 @@
-/*! site-slap v1.2.1 | MIT License | https://github.com/Mupran/site-slap */
+/*! site-slap v1.3.0 | MIT License | https://github.com/Mupran/site-slap */
 // A two-player stick-figure slap game that wrecks the page it is installed on.
 // One file, no dependencies. Drop it in with a <script> tag.
 (function (global) {
@@ -13,6 +13,7 @@
     launcherText: 'Slap this site',
     position: 'right',        // launcher corner: 'right' or 'left'
     target: null,             // element to mount inline; omit for a floating launcher
+    fighters: false,          // page fighters: false, true (on by default) or 'ask' (offer first)
   };
   const INK = '#121311', PAPER = '#ecebe4', ROPE = '#77786f';
   const W = 960, H = 540, FLOOR = 440, HOME = [380, 580];
@@ -64,8 +65,525 @@
     .opt:hover { background: ${PAPER}; color: ${INK}; } .opt:disabled { opacity: .5; cursor: default; }
     .hint { margin: 12px auto 0; max-width: 60ch; font-size: 13px; color: #a9a89f; }
     .hint a { color: inherit; }
+    .ask { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: ${TOP + 3}; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: center; width: max-content; max-width: calc(100vw - 24px); padding: 10px 10px 10px 20px; border-radius: 26px; background: ${INK}; color: ${PAPER}; border: 1px solid ${PAPER}; font-size: 15px; text-align: center; box-shadow: 0 18px 40px -14px rgba(0,0,0,.65); }
+    .ask p { margin: 0; max-width: 34ch; }
+    .ask div { display: flex; gap: 6px; }
+    .ask button { padding: 9px 16px; border-radius: 999px; border: 1px solid #55564e; font-size: 14px; font-weight: 700; }
+    .ask button.yes { background: ${PAPER}; color: ${INK}; border-color: ${PAPER}; }
     [hidden] { display: none !important; }
   `;
+
+  /* ====================================================================================
+     Page fighters (optional): two small figures who live along the bottom of the window.
+     They lean on opposite walls at the top of the page, notice each other on scroll, walk
+     in, taunt, and are brawling by the time the ring (or the foot of the page) arrives.
+     On phones and tablets, tilting the device tips the uphill one over into the other.
+     ==================================================================================== */
+  function createFighters(cfg) {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return null;
+    const game = cfg.anchor; // the inline ring, or null when the game is a floating launcher
+
+    const KEY = 'site-slap-fighters';
+    const store = {
+      get() { try { return localStorage.getItem(KEY); } catch (e) { return null; } },
+      set(v) { try { localStorage.setItem(KEY, v); } catch (e) { /* private mode */ } },
+    };
+    const coarse = matchMedia('(pointer: coarse)').matches;
+    const INK = '#121311', PAPER = '#ecebe4', H = 180;
+    const rand = (a, b) => a + Math.random() * (b - a);
+    const pick = (l) => l[Math.floor(Math.random() * l.length)];
+    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+    const lerp = (a, b, t) => a + (b - a) * t;
+    const ease = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+    const bump = (u, sharp = 1.8) => Math.sin(Math.min(1, u * sharp) * Math.PI); // out and back
+
+    /* ---------- the rig ----------
+       Angles are in the figure's own facing space: 0 hangs straight down, positive swings
+       forward. Arms: shoulder angle + elbow bend. Legs: hip angle + knee bend (knees fold
+       backward, so bends are negative). `rot` turns the whole body about the hip.
+       `hy` is hip height above the floor; left null it is worked out so the lower foot
+       touches the ground, which is what keeps feet planted through a walk or a crouch. */
+    const KEYS = ['rot', 'lean', 'head', 'aF', 'eF', 'aB', 'eB', 'lF', 'kF', 'lB', 'kB', 'ox', 'look', 'hy'];
+    const STAND = { rot: 0, lean: 0.04, head: 0, aF: 0.16, eF: 0.28, aB: -0.16, eB: 0.28, lF: 0.13, kF: -0.08, lB: -0.13, kB: -0.08, ox: 30, look: 1, hy: null };
+    const WALL = { ...STAND, lean: -0.2, head: -0.22, aF: 0.78, eF: 1.9, aB: 0.6, eB: 1.72, lF: 0.34, kF: -0.1, lB: -0.06, kB: -0.02, look: -0.7 };
+    const UP = 44, LOW = 44, TORSO = 72, NECK = 27;
+    const pol = (a, len) => [Math.sin(a) * len, Math.cos(a) * len];
+    const reach = (P) => Math.max(Math.cos(P.lF) * UP + Math.cos(P.lF + P.kF) * LOW, Math.cos(P.lB) * UP + Math.cos(P.lB + P.kB) * LOW);
+    const hipOf = (P) => (P.hy == null ? reach(P) : P.hy);
+
+    const mk = (i) => ({ i, side: i ? 1 : -1, color: cfg.colors[i], x: -1, face: i ? -1 : 1, phase: rand(0, 6), moving: false, act: null, bubble: '', P: { ...STAND, hy: reach(STAND) }, fall: null });
+    const A = mk(0), B = mk(1);
+    let on = false, away = false, cv = null, ctx = null, raf = 0, last = 0, t = 0;
+    let tilt = 0, tiltRaw = 0, gyro = false, listening = false;
+    let cloud = 0, fx = [], noticed = false, nextBit = 2.5, turnOf = 0;
+    let brawl = null; // { x, v, att, plan, move, mt, byTilt }
+
+    function settle(f, T, dt, rate = 16) {
+      const k = Math.min(1, dt * rate), P = f.P;
+      for (const key of KEYS) {
+        const to = key === 'hy' ? hipOf(T) : T[key];
+        P[key] += (to - P[key]) * k;
+      }
+    }
+
+    /* ---------- walking: legs driven by distance covered, so feet never skate ---------- */
+    function walkPose(p, run) {
+      const s = Math.sin(p), c = Math.cos(p), swing = run ? 0.82 : 0.56, bend = run ? 1.25 : 0.85;
+      return {
+        ...STAND, ox: 0, lean: run ? 0.26 : 0.09, head: run ? -0.1 : 0,
+        lF: s * swing, kF: -(0.12 + bend * Math.max(0, c)),
+        lB: -s * swing, kB: -(0.12 + bend * Math.max(0, -c)),
+        aF: -s * (run ? 0.95 : 0.5), eF: run ? 1.2 : 0.35,
+        aB: s * (run ? 0.95 : 0.5), eB: run ? 1.2 : 0.35,
+      };
+    }
+
+    /* ---------- solo acts: the strangers, then the taunting ---------- */
+    const TAUNTS = [
+      { say: 'oi!', pose: () => ({ aF: 1.55, eF: 0, lean: 0.14 }) },
+      { say: 'come on', pose: () => ({ aF: 1.3, eF: -1.1 + Math.sin(t * 15) * 0.55, lean: 0.06 }) },
+      { say: 'grr', pose: () => ({ aF: 2.3, eF: -1.7, aB: -2.3, eB: 1.7, lean: -0.04, lF: 0.3, lB: -0.3 }) },
+      { say: 'ha ha', pose: () => ({ lean: -0.16 + Math.sin(t * 22) * 0.05, head: -0.3, aF: 0.9, eF: 0.9 }) },
+      { say: 'boo', pose: () => ({ aF: 1.2, eF: 0.3, head: 0.15, lean: 0.1 }) },
+      { say: 'la la', pose: () => ({ lean: Math.sin(t * 9) * 0.2, aF: 2.3 + Math.sin(t * 9) * 0.5, aB: -2.3 + Math.sin(t * 9) * 0.5, lF: 0.25 + Math.sin(t * 9) * 0.3, kF: -0.5 - Math.sin(t * 9) * 0.4 }) },
+    ];
+    const REACTS = [
+      { say: '!', pose: (u) => ({ hy: reach(STAND) + bump(u, 2.4) * 22, aF: 2.7, aB: -2.7, head: -0.4, lean: -0.26, lF: 0.4, kF: -0.7, lB: -0.4, kB: -0.5 }) },
+      { say: '#@!', pose: () => ({ lean: 0.2, aF: 0.7, eF: 1.3, aB: -0.5, eB: 1.2, lF: 0.2, kF: -0.3 - Math.abs(Math.sin(t * 18)) * 0.5 }) },
+      { say: 'pff', pose: () => ({ head: 0.4, lean: -0.08, aF: 0.6, eF: 1.7, look: -1 }) },
+      { say: '?', pose: () => ({ head: 0.2, aF: 2.0, eF: -1.9, lean: -0.05 }) },
+    ];
+    const LOITER = [
+      { say: '♪', pose: () => ({ ...WALL, head: -0.4 + Math.sin(t * 2) * 0.06 }) },
+      { say: '', pose: () => ({ ...WALL, aF: 1.25, eF: -1.3, head: 0.35, look: 0.2 }) }, // checking a phone
+      { say: '', pose: () => ({ ...WALL, lean: -0.24, lF: 0.1, kF: 0, lB: 0.36, kB: -0.5 }) }, // crossing the other ankle
+      { say: '…', pose: () => ({ ...WALL, head: 0.1, look: 1 }) }, // a glance across
+    ];
+    const NOTICE = [
+      { say: '?', pose: () => ({ ...STAND, ox: 0, head: -0.1, aF: 0.5, eF: 1.2, look: 1 }) },
+      { say: '!', pose: (u) => ({ ...STAND, ox: 0, head: -0.2, hy: reach(STAND) + bump(u, 2.5) * 10, aF: 1.4, eF: 0.1 }) },
+    ];
+    const give = (f, def, dur, delay = 0) => { f.act = { def, t: -delay, dur }; };
+    function direct(dt, c) {
+      nextBit -= dt;
+      if (nextBit > 0 || A.moving || B.moving || A.fall || B.fall) return;
+      const me = turnOf ? B : A, you = turnOf ? A : B;
+      turnOf = 1 - turnOf;
+      if (c < 0.03) { give(me, pick(LOITER), rand(1.6, 2.6)); nextBit = rand(1.8, 3.4); return; }
+      give(me, pick(TAUNTS), rand(1.5, 2.1));
+      give(you, pick(REACTS), rand(1.3, 1.7), 0.45);
+      nextBit = rand(2.4, 3.6);
+    }
+    function soloTarget(f, dt, base) {
+      f.bubble = '';
+      if (!f.act) return base;
+      f.act.t += dt;
+      const u = f.act.t / f.act.dur;
+      if (u >= 1) { f.act = null; return base; }
+      if (u < 0) return base;
+      if (u > 0.06 && u < 0.92) f.bubble = f.act.def.say;
+      return { ...base, ...f.act.def.pose(u) };
+    }
+
+    /* ---------- the brawl: a script of two-person moves ----------
+       Each move returns a pose for the attacker and one for the victim. `ox` is how far
+       each stands from the middle of the scrap, on his own side; a negative value means he
+       has crossed over onto the other man. */
+    const lying = () => ({ rot: -1.5, hy: 13, lean: 0, head: 0.2 });
+    const guard = { ...STAND, lean: 0.14, aF: 1.2, eF: -1.4, aB: 0.9, eB: -1.5, lF: 0.3, kF: -0.3, lB: -0.3, kB: -0.25, ox: 30 };
+    const MOVES = {
+      square: { dur: 0.55, fn: () => [guard, guard] },
+      shove: { dur: 0.75, hit: 0.3, fn: (u) => {
+        const s = bump(u, 1.5), r = bump(Math.max(0, u - 0.22), 1.6);
+        return [
+          { ...STAND, lean: 0.12 + 0.3 * s, aF: 1.5, eF: 0.05, aB: 1.36, eB: 0.1, lF: 0.45, kF: -0.35, lB: -0.45, kB: -0.1, ox: 30 - 9 * s },
+          { ...STAND, lean: -0.42 * r, head: -0.3 * r, aF: 0.3 + 2.2 * r, aB: -0.2 - 1.6 * r, lF: -0.1 + 0.5 * r, kF: -0.2, lB: -0.5 * r, kB: -0.6 * r, ox: 30 + 20 * r },
+        ];
+      } },
+      slap: { dur: 0.55, hit: 0.34, fn: (u) => {
+        const wind = u < 0.3 ? u / 0.3 : 1, swing = u < 0.3 ? 0 : Math.min(1, (u - 0.3) / 0.12), rec = bump(Math.max(0, u - 0.34), 1.3);
+        return [
+          { ...STAND, lean: -0.1 * wind + 0.34 * swing, aF: lerp(lerp(0.2, -1.5, wind), 1.95, swing), eF: lerp(0.9, 0.05, swing), aB: -0.5, eB: 0.8, lF: 0.4, kF: -0.3, lB: -0.4, kB: -0.1, ox: 27 },
+          { ...STAND, lean: -0.3 * rec, head: -0.85 * rec, look: 1 - 1.6 * rec, aF: 0.3 + 1.4 * rec, aB: -0.3 - 1.2 * rec, lF: 0.1, lB: -0.2 - 0.3 * rec, kB: -0.4 * rec, ox: 27 + 9 * rec },
+        ];
+      } },
+      headlock: { dur: 1.7, hit: 0.5, fn: (u) => {
+        const k = Math.min(1, u * 5) * (1 - Math.max(0, (u - 0.88) / 0.12));
+        return [
+          { ...STAND, lean: 0.1 * k, aF: lerp(0.3, 1.75, k), eF: lerp(0.3, -2.05, k), aB: lerp(0, 1.25 + Math.sin(t * 19) * 0.35, k), eB: lerp(0.3, -1.5, k), lF: 0.4, kF: -0.4, lB: -0.4, kB: -0.2, ox: 30 - 14 * k },
+          { ...STAND, lean: 1.12 * k, head: 0.25 * k, aF: 0.3 + k * (0.7 + Math.sin(t * 14) * 0.8), eF: 0.6, aB: -0.3 + k * (-0.4 + Math.cos(t * 13) * 0.8), eB: 0.8, lF: k * Math.sin(t * 10) * 0.5, kF: -0.25 - 0.3 * k, lB: -k * Math.sin(t * 10) * 0.5, kB: -0.25 - 0.3 * k, ox: 30 - 8 * k },
+        ];
+      } },
+      legpull: { dur: 1.6, fn: (u) => {
+        const k = Math.min(1, u * 4.5) * (1 - Math.max(0, (u - 0.86) / 0.14)), hop = Math.abs(Math.sin(t * 9));
+        return [
+          { ...STAND, lean: 0.58 * k, head: -0.3 * k, aF: lerp(0.2, 1.12, k), eF: 0.15, aB: lerp(0, 0.98, k), eB: 0.2, lF: 0.9 * k, kF: -1.45 * k - 0.1, lB: -0.5 * k, kB: -0.85 * k - 0.1, ox: 32 },
+          { ...STAND, lean: -0.3 * k, head: -0.15, aF: 0.2 + k * (2.4 + Math.sin(t * 12) * 0.5), aB: -0.2 - k * (2.2 + Math.cos(t * 11) * 0.5), lF: 1.38 * k, kF: -0.12, lB: 0.05, kB: -0.1 - 0.35 * k * hop, hy: reach(STAND) + k * hop * 9, ox: 32 - 4 * k },
+        ];
+      } },
+      tackle: { dur: 0.6, hit: 0.5, fn: (u) => {
+        const e = ease(u);
+        return [
+          { ...STAND, rot: 1.3 * e, hy: lerp(reach(STAND), 24, e), lean: 0.2, aF: 1.7, eF: 0, aB: 1.5, eB: 0, lF: -0.5 * e, kF: -0.4, lB: -0.9 * e, kB: -0.3, ox: lerp(30, -30, e) },
+          { ...STAND, rot: -1.5 * e, hy: lerp(reach(STAND), 13, e), aF: 0.3 + 2.4 * e, aB: -0.3 - 2.2 * e, lF: 0.2 + 0.9 * e, kF: -0.9 * e, lB: 0.5 * e, kB: -1.1 * e, ox: lerp(30, 46, e) },
+        ];
+      } },
+      ground: { dur: 2.2, hit: 0.2, fn: () => [
+        { ...STAND, rot: 0, hy: 36, lean: 0.24 + Math.sin(t * 10) * 0.1, aF: 1.25 + Math.sin(t * 16) * 0.6, eF: 0.15, aB: 1.1 + Math.cos(t * 16) * 0.6, eB: 0.2, lF: 1.42, kF: -1.6, lB: 1.2, kB: -1.7, ox: -52 },
+        { ...STAND, ...lying(), aF: 2.5 + Math.sin(t * 11) * 0.5, aB: 2.9 + Math.cos(t * 9) * 0.4, lF: 1.3 + Math.sin(t * 8) * 0.5, kF: -1.0 + Math.sin(t * 12) * 0.5, lB: 0.75 + Math.cos(t * 8) * 0.5, kB: -1.2, look: 1, ox: 46 },
+      ] },
+      twist: { dur: 1.7, fn: (u) => {
+        const k = Math.min(1, u * 4);
+        return [
+          { ...STAND, lean: 0.28 - Math.sin(t * 5) * 0.2, aF: 1.18, eF: 0.1 + Math.sin(t * 6) * 0.25, aB: 1.02, eB: 0.2, lF: 0.6, kF: -0.9, lB: -0.4, kB: -0.6, ox: lerp(-52, 4, k) },
+          { ...STAND, ...lying(), aF: 2.6 + Math.sin(t * 13) * 0.5, aB: 3.0 + Math.cos(t * 12) * 0.4, lF: 1.75, kF: -0.3 + Math.sin(t * 6) * 1.1, lB: 0.9 + Math.sin(t * 10) * 0.4, kB: -1.3, ox: 46 },
+        ];
+      } },
+      intense: { dur: 1.0, smoke: true, fn: () => [
+        { ...STAND, rot: Math.sin(t * 13) * 1.2, hy: 30, aF: 2 + Math.sin(t * 20), aB: -1 + Math.cos(t * 17), lF: Math.sin(t * 15), lB: Math.cos(t * 14), ox: 6 },
+        { ...STAND, rot: Math.cos(t * 12) * 1.2, hy: 30, aF: 2 + Math.cos(t * 19), aB: -1 + Math.sin(t * 18), lF: Math.cos(t * 16), lB: Math.sin(t * 13), ox: 6 },
+      ] },
+      getup: { dur: 0.6, fn: () => [{ ...STAND, lean: 0.1 }, { ...STAND, lean: 0.1 }] },
+    };
+    const WORDS = ['POW', 'BONK', 'OOF', 'HEY!', 'OW', 'BIFF', 'YOINK'];
+    function script(hot, fromFall) {
+      const standing = ['square', 'shove', 'slap', 'swap', 'slap', 'swap', 'headlock', 'slap', 'legpull', 'swap', 'shove', 'slap'];
+      const plan = fromFall ? ['ground', 'twist'] : [...standing.slice(0, hot ? 12 : 9), 'tackle', 'ground', 'twist'];
+      if (hot || Math.random() < 0.35) plan.push('intense');
+      plan.push('getup', 'swap');
+      return plan;
+    }
+    function startBrawl(x, att, byTilt, fromFall) {
+      brawl = { x, v: 0, att, plan: script(!byTilt, fromFall), move: null, mt: 0, byTilt, ending: false };
+      A.act = B.act = null; A.bubble = B.bubble = ''; A.fall = B.fall = null;
+    }
+    function stepBrawl(dt, hot, keep, vw, edge) {
+      const b = brawl, S = scale(vw), speed = hot ? 1.3 : 1;
+      while (!b.move) {
+        if (!b.plan.length) {
+          if (!keep) { brawl = null; return; }
+          b.plan = script(hot, false);
+        }
+        const name = b.plan.shift();
+        if (name === 'swap') { b.att = 1 - b.att; continue; }
+        if (!keep && !b.ending) { b.plan = []; b.ending = true; b.move = MOVES.getup; b.mt = 0; b.hit = true; break; }
+        b.move = MOVES[name]; b.mt = 0; b.hit = false;
+      }
+      b.mt += dt * speed;
+      const u = Math.min(1, b.mt / b.move.dur);
+      const [pa, pv] = b.move.fn(u);
+      const X = b.att ? B : A, Y = b.att ? A : B;
+      settle(X, pa, dt, 20); settle(Y, pv, dt, 20);
+      // Tilting slides the whole scrap downhill, to the wall.
+      if (b.byTilt && gyro && Math.abs(tilt) > 0.2) b.v += tilt * 1500 * dt;
+      b.v *= Math.pow(0.25, dt);
+      const lo = edge + 84 * S, hi = vw - edge - 84 * S;
+      b.x = clamp(b.byTilt ? b.x + b.v * dt : lerp(b.x, vw / 2, Math.min(1, dt * 4)), lo, hi);
+      if (b.x === lo || b.x === hi) b.v = 0;
+      [A, B].forEach((f) => { f.x = b.x + f.side * f.P.ox * S; f.face = -f.side; f.moving = false; });
+      if (b.move.hit != null && !b.hit && u >= b.move.hit) {
+        b.hit = true;
+        fx.push({ kind: 'star', x: Y.x + rand(-8, 8), y: H - 8 - (Y.P.hy + 80) * S + rand(-6, 6), life: 1 });
+        if (Math.random() < 0.6) fx.push({ kind: 'word', text: pick(WORDS), x: b.x + rand(-26, 26), y: H - 8 - 205 * S, life: 1 });
+      }
+      cloud += ((b.move.smoke ? 1 : 0) - cloud) * Math.min(1, dt * 10);
+      if (u >= 1) b.move = null;
+    }
+
+    /* ---------- tilt: losing footing, going over, sliding downhill ---------- */
+    function stepFall(f, other, dt, dir, vw) {
+      const S = scale(vw), F = f.fall;
+      F.t += dt;
+      f.face = dir; f.bubble = ''; f.act = null; f.moving = false;
+      if (F.t < 0.42) {
+        // The floor has gone from under him: windmilling arms, feet scrabbling.
+        F.v += 240 * dt;
+        f.x += dir * F.v * dt * S;
+        settle(f, { ...STAND, lean: 0.25 + F.t * 1.3, head: -0.3, aF: 2.2 + Math.sin(t * 26) * 1.1, aB: -2.2 + Math.cos(t * 26) * 1.1, lF: Math.sin(t * 24) * 0.6, kF: -0.5, lB: -Math.sin(t * 24) * 0.6, kB: -0.5, ox: 0 }, dt, 22);
+      } else {
+        // Down on his front and gathering speed, legs in the air.
+        F.v += Math.max(0.35, Math.abs(tilt)) * 1500 * dt;
+        f.x += dir * F.v * dt * S;
+        settle(f, { ...STAND, rot: 1.42 + Math.sin(t * 16) * 0.1, hy: 15, lean: 0.1, head: -0.5, aF: 1.5, eF: 0.1, aB: 1.3, eB: 0.2, lF: -0.5 + Math.sin(t * 15) * 0.5, kF: -0.9, lB: -0.9 + Math.cos(t * 15) * 0.5, kB: -1.2, ox: 0 }, dt, 14);
+      }
+      if (Math.abs(other.x - f.x) < 74 * S) {
+        fx.push({ kind: 'star', x: other.x, y: H - 8 - 120 * S, life: 1 }, { kind: 'word', text: 'OOF', x: (f.x + other.x) / 2, y: H - 8 - 205 * S, life: 1 });
+        startBrawl((f.x + other.x) / 2 + dir * 16 * S, f.i, true, true);
+      }
+    }
+
+    /* ---------- drawing ---------- */
+    const scale = (vw) => (vw < 760 ? 0.33 : 0.44);
+    function drawMan(g, f, S, ground, alpha = 1, P = f.P, x = f.x, y = null) {
+      if (alpha <= 0.01) return;
+      const sh = [Math.sin(P.lean) * TORSO, -Math.cos(P.lean) * TORSO];
+      const hd = [sh[0] + Math.sin(P.lean + P.head) * NECK, sh[1] - Math.cos(P.lean + P.head) * NECK];
+      const limb = (o, a, e, l1, l2) => { const p1 = pol(a, l1), j = [o[0] + p1[0], o[1] + p1[1]], p2 = pol(a + e, l2); return [o, j, [j[0] + p2[0], j[1] + p2[1]]]; };
+      const parts = [limb([0, 0], P.lB, P.kB, UP, LOW), limb(sh, P.aB, P.eB, 42, 40), limb([0, 0], P.lF, P.kF, UP, LOW), limb(sh, P.aF, P.eF, 42, 40)];
+      g.save();
+      g.globalAlpha = alpha;
+      g.translate(x, y == null ? ground - P.hy * S : y);
+      g.scale(S * f.face, S);
+      g.rotate(P.rot);
+      g.lineCap = 'round'; g.lineJoin = 'round';
+      const body = () => {
+        g.beginPath();
+        parts.forEach((p) => { g.moveTo(...p[0]); g.lineTo(...p[1]); g.lineTo(...p[2]); });
+        g.moveTo(0, 0); g.lineTo(...sh);
+        g.stroke();
+        g.beginPath(); g.arc(hd[0], hd[1], 21, 0, 7); g.stroke();
+      };
+      g.strokeStyle = INK; g.lineWidth = 15; body();
+      g.strokeStyle = f.color; g.lineWidth = 8; body();
+      g.fillStyle = PAPER; g.beginPath(); g.arc(hd[0], hd[1], 17, 0, 7); g.fill();
+      g.fillStyle = INK; g.beginPath(); g.arc(hd[0] + clamp(P.look, -1, 1) * 8 + Math.sin(P.lean + P.head) * 3, hd[1] - 3, 3, 0, 7); g.fill();
+      g.restore();
+      if (f.bubble && y == null) {
+        const bx = x + f.face * 5, by = ground - (P.hy + 142) * S;
+        g.save();
+        g.globalAlpha = alpha;
+        g.font = '700 12px Archivo, system-ui, sans-serif';
+        const w = Math.max(24, g.measureText(f.bubble).width + 16), left = clamp(bx - w / 2, 4, innerWidth - w - 4);
+        g.fillStyle = PAPER; g.strokeStyle = INK; g.lineWidth = 2;
+        g.beginPath(); g.roundRect(left, by - 20, w, 22, 9); g.fill(); g.stroke();
+        g.beginPath(); g.moveTo(bx - 4, by + 1); g.lineTo(bx, by + 8); g.lineTo(bx + 4, by + 1); g.fill(); g.stroke();
+        g.fillStyle = PAPER; g.fillRect(bx - 5, by - 1, 10, 3);
+        g.fillStyle = INK; g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.fillText(f.bubble, left + w / 2, by - 8.5);
+        g.restore();
+      }
+    }
+    function drawCloud(g, x, ground, S, alpha) {
+      if (alpha <= 0.01) return;
+      const R = 62 * S / 0.44, cy = ground - R * 0.8, tick = Math.floor(t * 13);
+      const noise = (n) => { const v = Math.sin(n * 127.1 + tick * 311.7) * 43758.5453; return v - Math.floor(v); };
+      g.save();
+      g.globalAlpha = alpha;
+      g.translate(x + Math.sin(t * 47) * 2.5, cy + Math.cos(t * 39) * 2);
+      g.fillStyle = PAPER; g.strokeStyle = INK; g.lineWidth = 2;
+      for (let n = 0; n < 9; n++) {
+        const a = (n / 9) * Math.PI * 2 + Math.sin(t * 5 + n) * 0.2, d = R * (0.42 + 0.14 * Math.sin(t * 9 + n * 2));
+        g.beginPath(); g.arc(Math.cos(a) * d, Math.sin(a) * d * 0.7, R * (0.36 + 0.06 * Math.sin(t * 11 + n)), 0, 7); g.fill(); g.stroke();
+      }
+      g.beginPath(); g.arc(0, 0, R * 0.5, 0, 7); g.fill();
+      g.lineCap = 'round';
+      for (let n = 0; n < 4; n++) {
+        const a = noise(n) * Math.PI * 2, len = R * (1 + noise(n + 9) * 0.5);
+        g.strokeStyle = INK; g.lineWidth = 7; g.beginPath(); g.moveTo(Math.cos(a) * R * 0.7, Math.sin(a) * R * 0.5); g.lineTo(Math.cos(a) * len, Math.sin(a) * len * 0.8); g.stroke();
+        g.strokeStyle = n % 2 ? B.color : A.color; g.lineWidth = 3.6; g.stroke();
+      }
+      g.restore();
+    }
+    function drawFx(g, dt) {
+      fx.forEach((e) => {
+        e.life -= dt * (e.kind === 'star' ? 2.6 : 1.5);
+        if (e.life <= 0) return;
+        g.save();
+        g.globalAlpha = Math.min(1, e.life * 2.5);
+        if (e.kind === 'star') {
+          const r = 5 + (1 - e.life) * 9;
+          g.translate(e.x, e.y); g.fillStyle = '#ffd84a'; g.strokeStyle = INK; g.lineWidth = 1.5;
+          g.beginPath();
+          for (let k = 0; k < 8; k++) { const q = k * Math.PI / 4, rr = k % 2 ? r * 0.38 : r; g.lineTo(Math.cos(q) * rr, Math.sin(q) * rr); }
+          g.closePath(); g.fill(); g.stroke();
+        } else {
+          g.font = '800 14px Archivo, system-ui, sans-serif'; g.textAlign = 'center'; g.lineJoin = 'round';
+          g.lineWidth = 4; g.strokeStyle = INK; g.strokeText(e.text, e.x, e.y - (1 - e.life) * 14);
+          g.fillStyle = PAPER; g.fillText(e.text, e.x, e.y - (1 - e.life) * 14);
+        }
+        g.restore();
+      });
+      fx = fx.filter((e) => e.life > 0);
+    }
+
+    /* ---------- the loop ---------- */
+    function frame(now) {
+      raf = requestAnimationFrame(frame);
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now; t += dt;
+      const vw = innerWidth, S = scale(vw), ground = H - 8;
+      const dpr = Math.min(2, devicePixelRatio || 1);
+      if (cv.width !== Math.round(vw * dpr)) { cv.width = Math.round(vw * dpr); cv.height = Math.round(H * dpr); }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, vw, H);
+      if (away) return;
+
+      // With an inline ring the fight peaks as it scrolls into view; otherwise at the foot of the page.
+      let c, atGame;
+      if (game) {
+        const r = game.getBoundingClientRect();
+        c = clamp(scrollY / Math.max(1, r.top + scrollY - innerHeight * 0.6), 0, 1);
+        atGame = r.top < innerHeight * 0.82 && r.bottom > innerHeight * 0.25;
+      } else {
+        c = clamp(scrollY / Math.max(1, document.documentElement.scrollHeight - innerHeight), 0, 1);
+        atGame = c > 0.96;
+      }
+      tilt += (tiltRaw - tilt) * Math.min(1, dt * 7);
+      const tipping = gyro && Math.abs(tilt) > 0.3 && !atGame ? Math.sign(tilt) : 0;
+      const half = vw / 2, wall = 40 * S + 10, near = 30 * S;
+      const keep = atGame || c > 0.97 || !!(brawl && brawl.byTilt && gyro && Math.abs(tilt) > 0.2);
+
+      if (brawl) {
+        stepBrawl(dt, atGame, keep, vw, wall);
+      } else {
+        cloud += (0 - cloud) * Math.min(1, dt * 10);
+        // Where each should be standing for this much of the page.
+        const spot = (f) => (c < 0.03 ? (f.i ? vw - wall : wall) : lerp(f.i ? vw - wall - 34 * S : wall + 34 * S, half + f.side * near, ease(c)));
+        if (A.x < 0) { A.x = spot(A); B.x = spot(B); }
+        if (c >= 0.03 && !noticed) { noticed = true; give(A, NOTICE[0], 0.9); give(B, NOTICE[1], 0.9, 0.25); nextBit = 1.4; }
+        if (c < 0.02) noticed = false;
+        for (const f of [A, B]) {
+          const other = f.i ? A : B;
+          if (tipping && f.side === -tipping && !f.fall && Math.abs(other.x - f.x) > 80 * S) f.fall = { t: 0, v: 0 };
+          if (f.fall) {
+            if (!tipping) f.fall = null; // level again: he picks himself up
+            else { stepFall(f, other, dt, tipping, vw); if (brawl) break; continue; }
+          }
+          const d = spot(f) - f.x, run = Math.abs(d) > 150;
+          const maxStep = (run ? 560 : 250) * S * dt, step = clamp(d, -maxStep, maxStep);
+          const busy = f.act && f.act.t >= 0 && Math.abs(d) < 26 * S; // finish the gesture before shuffling a few pixels
+          f.moving = Math.abs(d) > 1.2 && !busy;
+          if (f.moving) {
+            f.x += step;
+            f.face = Math.sign(step) || f.face;
+            f.phase += Math.abs(step) / ((run ? 62 : 46) * S) * Math.PI; // one stride per half turn
+            f.act = null; f.bubble = '';
+            settle(f, walkPose(f.phase, run), dt, 24);
+          } else {
+            f.face = -f.side;
+            settle(f, soloTarget(f, dt, c < 0.03 ? { ...WALL, ox: 0 } : { ...STAND, ox: 0 }), dt, 14);
+          }
+        }
+        if (!brawl) {
+          direct(dt, c);
+          const ready = Math.abs(A.x - B.x) < near * 2 + 12 && !A.moving && !B.moving && !A.fall && !B.fall;
+          if (ready && (atGame || c > 0.97)) startBrawl((A.x + B.x) / 2, turnOf, false, false);
+        }
+      }
+      const first = brawl && brawl.att === 0 ? B : A, second = first === A ? B : A; // attacker drawn on top
+      drawMan(ctx, first, S, ground, 1 - cloud);
+      drawMan(ctx, second, S, ground, 1 - cloud);
+      drawCloud(ctx, brawl ? brawl.x : (A.x + B.x) / 2, ground, S, cloud);
+      drawFx(ctx, dt);
+    }
+
+    function enable() {
+      if (on) return;
+      on = true;
+      cv = document.createElement('canvas');
+      cv.setAttribute('data-site-slap', '');
+      cv.setAttribute('aria-hidden', 'true');
+      cv.style.cssText = `position:fixed;left:0;bottom:0;width:100vw;height:${H}px;z-index:${TOP - 2};pointer-events:none`;
+      document.body.appendChild(cv);
+      ctx = cv.getContext('2d');
+      A.x = B.x = -1; brawl = null; noticed = false;
+      last = performance.now();
+      raf = requestAnimationFrame(frame);
+      sync();
+    }
+    function disable() {
+      if (!on) return;
+      on = false;
+      cancelAnimationFrame(raf);
+      cv.remove();
+      sync();
+    }
+
+    /* ---------- tilt, for phones and tablets ---------- */
+    function listen() {
+      if (listening) return;
+      listening = true;
+      addEventListener('deviceorientation', (e) => {
+        if (e.gamma == null) return;
+        gyro = true;
+        const angle = (screen.orientation && screen.orientation.angle) || 0;
+        const side = Math.abs(angle) === 90 ? e.beta * (angle === 90 ? 1 : -1) : e.gamma;
+        tiltRaw = clamp(side / 24, -1, 1);
+      });
+    }
+    // iOS only hands over motion data after a tap, so this has to run inside one.
+    function askTilt() {
+      if (!(coarse || 'ontouchstart' in window) || typeof DeviceOrientationEvent === 'undefined') return;
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission().then((s) => { if (s === 'granted') listen(); }).catch(() => {});
+      } else listen();
+    }
+
+    /* ---------- asking, and the switch ---------- */
+    const toggle = cfg.toggle;
+    function sync() {
+      if (!toggle) return;
+      toggle.setAttribute('aria-pressed', on);
+      toggle.textContent = on ? 'Page fighters: on' : 'Page fighters: off';
+    }
+    if (toggle) toggle.addEventListener('click', () => {
+      if (on) { disable(); store.set('off'); } else { enable(); store.set('on'); askTilt(); }
+    });
+    function chip(text, yes, no, onYes, onNo) {
+      const el = document.createElement('div');
+      el.className = 'ask';
+      el.setAttribute('role', 'dialog');
+      el.setAttribute('aria-label', 'Page fighters');
+      el.innerHTML = `<p></p><div><button type="button" class="yes"></button>${no ? '<button type="button" class="no"></button>' : ''}</div>`;
+      el.querySelector('p').textContent = text;
+      el.querySelector('.yes').textContent = yes;
+      el.querySelector('.yes').addEventListener('click', () => { el.remove(); onYes(); });
+      if (no) { el.querySelector('.no').textContent = no; el.querySelector('.no').addEventListener('click', () => { el.remove(); if (onNo) onNo(); }); }
+      cfg.shadow.appendChild(el);
+      return el;
+    }
+    // 'on' shows them unless the visitor has switched them off; 'ask' offers first.
+    const saved = store.get();
+    if (saved === 'on' || (cfg.mode === 'on' && saved !== 'off')) {
+      enable();
+      if ((coarse || 'ontouchstart' in window) && typeof DeviceOrientationEvent !== 'undefined') {
+        // iPhones need a tap before they share motion data; everything else just works.
+        if (typeof DeviceOrientationEvent.requestPermission === 'function') setTimeout(() => chip('Tilt your phone to tip them over.', 'Enable tilt', 'Skip', askTilt), 1200);
+        else listen();
+      }
+    } else if (cfg.mode === 'ask' && saved === null) {
+      setTimeout(() => chip('Big fight happening below.', 'Watch here', 'No thanks', () => { store.set('on'); enable(); askTilt(); }, () => store.set('off')), 1400);
+    }
+    sync();
+
+    /* ---------- handing over to the game ---------- */
+    return {
+      destroy() { disable(); },
+      active: () => on && !away,
+      // For testing without a device: __fighters.tilt(1) leans right, -1 left, 0 level.
+      tilt(v) { gyro = true; tiltRaw = clamp(v, -1, 1); },
+      resume() { away = false; A.x = B.x = -1; brawl = null; },
+      // Both leap from the bottom of the window into the ring, wherever it is on screen.
+      jumpInto(ring, home, floor, width) {
+        return new Promise((res) => {
+          const fly = document.createElement('canvas');
+          fly.setAttribute('data-site-slap', '');
+          fly.style.cssText = `position:fixed;inset:0;width:100vw;height:100vh;z-index:${TOP + 5};pointer-events:none`;
+          document.body.appendChild(fly);
+          const g = fly.getContext('2d'), dpr = Math.min(2, devicePixelRatio || 1);
+          fly.width = innerWidth * dpr; fly.height = innerHeight * dpr;
+          const S0 = scale(innerWidth), from = [A, B].map((f) => ({ x: f.x < 0 ? innerWidth / 2 : f.x, y: innerHeight - 8 - 84 * S0 }));
+          away = true; brawl = null; cloud = 0; fx = [];
+          const t0 = performance.now(), dur = 900;
+          const step = (now) => {
+            const u = Math.min(1, (now - t0) / dur), e = ease(u), r = ring.getBoundingClientRect(), k = r.width / width;
+            g.setTransform(dpr, 0, 0, dpr, 0, 0);
+            g.clearRect(0, 0, innerWidth, innerHeight);
+            [A, B].forEach((f, i) => {
+              const to = { x: r.left + home[i] * k, y: r.top + (floor - 84) * k }, peak = Math.min(from[i].y, to.y) - 190;
+              const mx = (from[i].x + to.x) / 2, a = 1 - e;
+              const x = a * a * from[i].x + 2 * a * e * mx + e * e * to.x, y = a * a * from[i].y + 2 * a * e * peak + e * e * to.y;
+              const tuck = Math.sin(e * Math.PI);
+              f.face = -f.side;
+              drawMan(g, f, lerp(S0, k, e), 0, 1, { ...STAND, rot: e * Math.PI * 2, aF: 2.6 - tuck, aB: 2.2 - tuck, lF: 0.2 + tuck * 1.2, kF: -tuck * 1.6, lB: tuck * 1.0, kB: -tuck * 1.7, hy: 0 }, x, y);
+            });
+            if (u < 1) requestAnimationFrame(step); else { fly.remove(); res(); }
+          };
+          requestAnimationFrame(step);
+        });
+      },
+    };
+  }
 
   function create(options) {
     const opts = Object.assign({}, DEFAULTS, options);
@@ -78,7 +596,7 @@
     const host = document.createElement('div');
     host.setAttribute('data-site-slap-host', '');
     const shadow = host.attachShadow({ mode: 'open' });
-    shadow.innerHTML = `<style>${CSS} .launch, .fix, .panel { font-family: ${family.replace(/"/g, "'")}; }</style>
+    shadow.innerHTML = `<style>${CSS} .launch, .fix, .panel, .ask { font-family: ${family.replace(/"/g, "'")}; }</style>
       ${inline ? '' : `<button type="button" class="launch ${opts.position === 'left' ? 'left' : 'right'}">${opts.launcherText}</button>`}
       <div class="panel ${inline ? 'inline' : 'float'}" style="font-family:${family.replace(/"/g, "'")}" ${inline ? '' : 'hidden'}>
         ${inline ? '<button type="button" class="start">&#9654; Play</button>' : ''}
@@ -91,6 +609,7 @@
           </div>
           <div class="row">
             <button type="button" class="opt mode">Play the computer instead</button>
+            <button type="button" class="opt ftoggle">Page fighters: off</button>
             <button type="button" class="opt repair" hidden>Repair the website</button>
             <button type="button" class="opt quit">${inline ? 'Stop playing' : 'Close'}</button>
           </div>
@@ -103,7 +622,9 @@
     const panel = $('.panel'), arena = $('.arena'), cv = $('canvas'), ctx = cv.getContext('2d');
     const btns = [...shadow.querySelectorAll('.slap')], labels = btns.map((b) => b.querySelector('span'));
     const statusEl = $('.status'), modeBtn = $('.mode'), fixBtn = $('.repair'), quitBtn = $('.quit'), pill = $('.fix');
-    const launch = $('.launch'), startBtn = $('.start');
+    const launch = $('.launch'), startBtn = $('.start'), fToggle = $('.ftoggle');
+    const amb = opts.fighters ? createFighters({ anchor: inline ? host : null, shadow, toggle: fToggle, colors: COLORS, mode: opts.fighters === 'ask' ? 'ask' : 'on' }) : null;
+    if (!amb) fToggle.hidden = true;
 
     const mk = (i) => ({ i, x: HOME[i], y: FLOOR, dir: i ? -1 : 1, color: COLORS[i], lean: 0, head: 0, arm: 0.3, elbow: 0.4, rot: 0, sy: 1, ko: 0, mark: 0, out: false, phase: rand(0, 6), shake: 0 });
     const men = [mk(0), mk(1)];
@@ -763,11 +1284,22 @@
       refresh(); prompt();
       requestAnimationFrame(frame);
       if (inline) host.scrollIntoView({ block: 'center' });
+      // If the page fighters are out, they are the ones who jump in.
+      if (amb && amb.active()) {
+        men.forEach((f) => { f.out = true; });
+        state = 'busy'; refresh(); say('Here they come.');
+        amb.jumpInto(cv, HOME, FLOOR, W).then(() => {
+          men.forEach((f) => { f.out = false; f.sy = 0.6; tween(f, { sy: 1 }, 0.5, back); });
+          cam.shake = 9;
+          state = 'ready'; refresh(); prompt();
+        });
+      }
     }
     function close() {
       if (state === 'busy') return;
       running = false; state = 'off';
       if (inline) { arena.hidden = true; startBtn.hidden = false; } else { panel.hidden = true; launch.hidden = false; }
+      if (amb) amb.resume();
     }
     const onResize = () => { if (running) size(); };
     addEventListener('resize', onResize);
@@ -777,13 +1309,13 @@
 
     return {
       open, close, repair,
-      destroy() { running = false; repair(); removeEventListener('keydown', onDown); removeEventListener('keyup', onUp); removeEventListener('resize', onResize); if (overlay) overlay.remove(); host.remove(); },
+      destroy() { running = false; repair(); if (amb) amb.destroy(); removeEventListener('keydown', onDown); removeEventListener('keyup', onUp); removeEventListener('resize', onResize); if (overlay) overlay.remove(); host.remove(); },
     };
   }
 
   let game = null;
   const API = {
-    version: '1.2.1',
+    version: '1.3.0',
     /** Mount the game. Pass { target: element } to place it inline; otherwise it adds a floating launcher. */
     mount(options) { if (game) game.destroy(); game = create(options || {}); return game; },
     open(options) { if (!game) game = create(options || {}); game.open(); return game; },
@@ -802,6 +1334,7 @@
       if (script.hasAttribute('data-computer')) o.computer = true;
       if (script.getAttribute('data-position')) o.position = script.getAttribute('data-position');
       if (script.getAttribute('data-label')) o.launcherText = script.getAttribute('data-label');
+      if (script.hasAttribute('data-fighters')) o.fighters = script.getAttribute('data-fighters') === 'ask' ? 'ask' : true;
       API.mount(o);
     };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go();

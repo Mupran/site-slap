@@ -99,6 +99,7 @@
       <div class="grid">
         <div><h3>One file</h3><p>No dependencies and no build step. It draws on canvas and keeps its interface in a shadow root, so your styles and its styles stay apart.</p></div>
         <div><h3>Real damage, fully reversible</h3><p>It moves your actual elements with CSS transforms. One button puts every one of them back exactly as it was.</p></div>
+        <div><h3>Page fighters</h3><p>Two figures who follow the visitor down the page, taunt each other and brawl. Scroll this page and watch the bottom edge, or tilt your phone.</p></div>
         <div><h3>Two players or one</h3><p>Share a screen and take turns, on buttons or the A and L keys. Or switch to play the computer.</p></div>
       </div>
     </div>
@@ -108,10 +109,10 @@
     <div class="wrap">
       <h2>Install</h2>
       <p style="margin:0 0 18px;max-width:60ch;color:var(--muted)">Paste this before the closing <code>&lt;/body&gt;</code> tag. A “Slap this site” button appears in the corner.</p>
-      <pre><code>&lt;script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.2.1/site-slap.js"&gt;&lt;/script&gt;</code></pre>
+      <pre><code>&lt;script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.3.0/site-slap.js"&gt;&lt;/script&gt;</code></pre>
       <p style="margin:28px 0 18px;max-width:60ch;color:var(--muted)">To place the ring inside your page, as it is above, point it at an element.</p>
       <pre><code>&lt;div id="ring"&gt;&lt;/div&gt;
-&lt;script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.2.1/site-slap.js"
+&lt;script src="https://cdn.jsdelivr.net/gh/Mupran/site-slap@1.3.0/site-slap.js"
         data-target="#ring"&gt;&lt;/script&gt;</code></pre>
     </div>
   </section>
@@ -121,6 +122,7 @@
       <h2>Options</h2>
       <table>
         <tr><th><code>data-target</code></th><td>CSS selector of an element to hold the ring. Without it, a floating launcher is added.</td></tr>
+        <tr><th><code>data-fighters</code></th><td>Page fighters along the bottom of the window. <code>on</code> shows them straight away, <code>ask</code> offers first. This page has them on.</td></tr>
         <tr><th><code>data-computer</code></th><td>Start against the computer instead of a second player.</td></tr>
         <tr><th><code>data-position</code></th><td><code>left</code> or <code>right</code>, the corner for the floating launcher.</td></tr>
         <tr><th><code>data-label</code></th><td>Text for the floating launcher button.</td></tr>
@@ -134,6 +136,6 @@
   <div class="wrap">Made by <a href="https://www.mupranthetechguy.com">Emmanuel M Shine</a>. My idea, but Claude helped me build it. Open source and MIT licensed: <a href="https://github.com/Mupran/site-slap">add it to your own site</a>. No websites were permanently harmed.</div>
 </footer>
 
-<script src="site-slap.js" data-target="#ring"></script>
+<script src="site-slap.js" data-target="#ring" data-fighters="on"></script>
 </body>
 </html>
